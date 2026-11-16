@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { brand, serif } from "@/components/ShopHeader";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { rupees, STATUSES } from "@/lib/shop";
+import { downloadCsv } from "@/lib/csv";
+import { shrinkPhoto } from "@/lib/image";
 import type { Order, Product } from "@/lib/shop";
 
 const TONE: Record<string, string> = { Pending: "bg-yellow-100 text-yellow-900", Fulfilled: "bg-blue-100 text-blue-800", "Out for delivery": "bg-purple-100 text-purple-800", Delivered: "bg-green-100 text-green-800", Cancelled: "bg-red-100 text-red-700" };
@@ -27,6 +29,25 @@ function Login({ onDone }: { onDone: () => void }) {
   );
 }
 
+
+function Photo({ product, onSet }: { product: Product; onSet: (image: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const pick = async (f?: File) => {
+    if (!f) return;
+    try { onSet(await shrinkPhoto(f)); } catch (e) { toast.error((e as Error).message); }
+    if (ref.current) ref.current.value = "";
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" aria-label={`Change photo for ${product.name}`} onClick={() => ref.current?.click()}
+        className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-[#c9b48a] bg-[#f6ecdc] text-xs text-[#7b6a5f]">
+        {product.image ? <img src={product.image} alt="" className="size-full object-cover" /> : "+ Photo"}
+      </button>
+      <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files?.[0])} />
+    </div>
+  );
+}
+
 function Dashboard() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"orders" | "menu">("orders");
@@ -35,15 +56,16 @@ function Dashboard() {
   const [ful, setFul] = useState("All types");
   const [pay, setPay] = useState("All methods");
   const [term, setTerm] = useState("");
-  const [nw, setNw] = useState({ name: "", category: "Sweets", price: "" });
+  const [nw, setNw] = useState({ name: "", category: "Sweets", price: "", image: "" });
+  const newPhoto = useRef<HTMLInputElement>(null);
   const orders = useQuery({ queryKey: ["admin", "orders"], queryFn: () => apiGet<Order[]>("/admin/orders"), refetchInterval: 15000 });
   const menu = useQuery({ queryKey: ["admin", "products"], queryFn: () => apiGet<Product[]>("/admin/products") });
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin"] });
   const patchOrder = useMutation({ mutationFn: (v: { id: string; body: object }) => apiPatch(`/admin/orders/${v.id}`, v.body), onSuccess: refresh });
   const patchProd = useMutation({ mutationFn: (v: { id: string; body: object }) => apiPatch(`/admin/products/${v.id}`, v.body), onSuccess: () => { refresh(); toast.success("Menu updated"); } });
   const delProd = useMutation({ mutationFn: (id: string) => apiDelete(`/admin/products/${id}`), onSuccess: refresh });
-  const addProd = useMutation({ mutationFn: () => apiPost("/admin/products", { name: nw.name, category: nw.category, price: Number(nw.price), available: true }),
-    onSuccess: () => { setNw({ ...nw, name: "", price: "" }); refresh(); }, onError: () => toast.error("Enter a name and a price") });
+  const addProd = useMutation({ mutationFn: () => apiPost("/admin/products", { name: nw.name, category: nw.category, price: Number(nw.price), available: true, image: nw.image }),
+    onSuccess: () => { setNw({ ...nw, name: "", price: "", image: "" }); refresh(); }, onError: () => toast.error("Enter a name and a price") });
 
   const all = orders.isError ? [] : (orders.data ?? []);
   const days = RANGES[range];
@@ -56,6 +78,25 @@ function Dashboard() {
   const n = days || 30;
   const chart = Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); const k = day(d); return { d: k.slice(5), orders: all.filter((o) => day(o.created_at) === k).length }; });
   const methods = ["All methods", ...new Set(all.map((o) => o.payment_method))];
+
+  const stamp = day(new Date());
+  const exportOrders = () => {
+    if (!rows.length) return toast.error("No orders to export for these filters");
+    downloadCsv(`prashanthi-orders-${stamp}.csv`,
+      ["Order ID", "Date", "Time", "Customer", "Phone", "Type", "Pickup slot", "Delivery address", "Items", "Item count", "Subtotal (INR)", "Delivery fee (INR)", "Total (INR)", "Payment method", "Paid", "Status"],
+      rows.map((o) => { const d = new Date(o.created_at); return [o.code, day(d), d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), o.name, o.phone, o.mode,
+        o.mode === "Pickup" ? o.slot : "", o.mode === "Delivery" ? o.address : "", o.items.map((i) => `${i.name} x ${i.qty}`).join("; "),
+        o.items.reduce((s, i) => s + i.qty, 0), o.total - o.fee, o.fee, o.total, o.payment_method, o.paid ? "Yes" : "No", o.status]; }));
+  };
+  const exportItems = () => {
+    const t = new Map<string, { qty: number; amount: number }>();
+    rows.filter((o) => o.status !== "Cancelled").forEach((o) => o.items.forEach((i) => { const c = t.get(i.name) ?? { qty: 0, amount: 0 }; t.set(i.name, { qty: c.qty + i.qty, amount: c.amount + i.qty * i.price }); }));
+    if (!t.size) return toast.error("No items to export for these filters");
+    downloadCsv(`prashanthi-item-totals-${stamp}.csv`, ["Item", "Quantity sold", "Amount (INR)"],
+      [...t.entries()].sort((a, b) => b[1].qty - a[1].qty).map(([k, v]) => [k, v.qty, v.amount]));
+  };
+  const exportMenu = () => downloadCsv(`prashanthi-menu-${stamp}.csv`, ["Item", "Category", "Price (INR)", "Available", "Has photo"],
+    (menu.data ?? []).map((p) => [p.name, p.category, p.price, p.available ? "Yes" : "Hidden", p.image ? "Yes" : "No"]));
 
   return (
     <>
@@ -81,6 +122,10 @@ function Dashboard() {
             <label className="grid gap-1 text-sm">Fulfilment<select className={sel} value={ful} onChange={(e) => setFul(e.target.value)}>{["All types", "Delivery", "Pickup"].map((r) => <option key={r}>{r}</option>)}</select></label>
             <label className="grid gap-1 text-sm">Payment<select className={sel} value={pay} onChange={(e) => setPay(e.target.value)}>{methods.map((r) => <option key={r}>{r}</option>)}</select></label>
             <label className="grid gap-1 text-sm">Search<Input className="h-9 w-56 rounded-full bg-white" placeholder="Name, phone or order ID" value={term} onChange={(e) => setTerm(e.target.value)} /></label>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={exportOrders}>Export orders (CSV)</Button>
+              <Button size="sm" variant="outline" onClick={exportItems}>Export item totals</Button>
+            </div>
           </div>
           <div className="rounded-2xl border border-[#eadfce] bg-white p-5">
             <div className="mb-2 text-xs font-semibold tracking-[0.15em] text-[#7b6a5f]">ORDERS PER DAY</div>
@@ -108,11 +153,17 @@ function Dashboard() {
         </div>
       ) : (
         <div className="mx-auto max-w-4xl px-5 pb-12 pt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm opacity-70">Tap a photo box to add or change a photo. Photos are shrunk automatically.</p>
+            <Button size="sm" variant="outline" onClick={exportMenu}>Export menu (CSV)</Button>
+          </div>
           {(menu.data ?? []).map((p) => (
-            <div key={p.id} className="grid grid-cols-[1fr_96px_auto_auto] items-center gap-2 border-b border-[#eadfce] py-2">
-              <div><div className="font-semibold">{p.name}</div><div className="text-xs opacity-60">{p.category}</div></div>
-              <Input type="number" min={0} defaultValue={p.price} aria-label={`Price for ${p.name}`} className="bg-white"
+            <div key={p.id} className="flex flex-wrap items-center gap-2 border-b border-[#eadfce] py-2">
+              <Photo product={p} onSet={(image) => patchProd.mutate({ id: p.id, body: { image } })} />
+              <div className="min-w-40 flex-1"><div className="font-semibold">{p.name}</div><div className="text-xs opacity-60">{p.category}</div></div>
+              <Input type="number" min={0} defaultValue={p.price} aria-label={`Price for ${p.name}`} className="w-24 bg-white"
                 onBlur={(e) => Number(e.target.value) !== p.price && patchProd.mutate({ id: p.id, body: { price: Number(e.target.value) } })} />
+              {p.image && <Button size="sm" variant="outline" onClick={() => patchProd.mutate({ id: p.id, body: { image: "" } })}>Remove photo</Button>}
               <Button size="sm" variant={p.available ? "default" : "outline"} onClick={() => patchProd.mutate({ id: p.id, body: { available: !p.available } })}>{p.available ? "Available" : "Hidden"}</Button>
               <Button size="sm" variant="destructive" onClick={() => confirm(`Remove ${p.name}?`) && delProd.mutate(p.id)}>Remove</Button>
             </div>
@@ -123,6 +174,11 @@ function Dashboard() {
             <Input placeholder="Category" value={nw.category} onChange={(e) => setNw({ ...nw, category: e.target.value })} />
             <Input placeholder="Price in ₹" type="number" value={nw.price} onChange={(e) => setNw({ ...nw, price: e.target.value })} />
             <Button onClick={() => addProd.mutate()}>Add to menu</Button>
+          </div>
+          <div className="mt-2 flex items-center gap-3 text-sm">
+            <input ref={newPhoto} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; try { setNw({ ...nw, image: await shrinkPhoto(f) }); } catch (er) { toast.error((er as Error).message); } if (newPhoto.current) newPhoto.current.value = ""; }} />
+            <Button size="sm" variant="outline" onClick={() => newPhoto.current?.click()}>{nw.image ? "Change photo" : "Add a photo (optional)"}</Button>
+            {nw.image && <img src={nw.image} alt="" className="size-12 rounded-lg object-cover" />}
           </div>
         </div>
       )}

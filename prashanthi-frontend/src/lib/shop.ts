@@ -1,6 +1,6 @@
 export type Mode = "Pickup" | "Delivery";
 export type Status = "Pending" | "Fulfilled" | "Out for delivery" | "Delivered" | "Cancelled";
-export interface Product { id: string; name: string; category: string; price: number; available: boolean }
+export interface Product { id: string; name: string; category: string; price: number; available: boolean; image?: string }
 export interface OrderItem { name: string; qty: number; price: number }
 export interface Order {
   id: string; code: string; name: string; phone: string; mode: Mode; slot: string; address: string;

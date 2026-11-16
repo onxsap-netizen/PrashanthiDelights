@@ -77,7 +77,13 @@ export default function Shop() {
         {products.isError && <p className="text-sm opacity-70">The menu is unavailable right now. Please try again shortly or call +91 98458 28903.</p>}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
           {shown.map((p) => (
-            <div key={p.id} className="flex flex-col gap-1 rounded-xl border border-[#e8dbb8] bg-white p-4">
+            <div key={p.id} className="flex flex-col gap-1 overflow-hidden rounded-xl border border-[#e8dbb8] bg-white">
+              <div className="aspect-[4/3] w-full bg-[#f6ecdc]">
+                {p.image
+                  ? <img src={p.image} alt={p.name} loading="lazy" className="size-full object-cover" />
+                  : <div className="grid size-full place-items-center"><img src="/prashanthi-logo.png" alt="" className="size-16 opacity-25" /></div>}
+              </div>
+              <div className="flex flex-1 flex-col gap-1 p-4 pt-3">
               <span className="text-xs opacity-60">{p.category}</span>
               <h3 className="font-semibold">{p.name}</h3>
               <div className="mt-1 flex items-center justify-between">
@@ -89,6 +95,7 @@ export default function Shop() {
                     <Button size="icon-sm" variant="outline" aria-label="Add one" onClick={() => bump(p.id, 1)}>+</Button>
                   </span>
                 ) : <Button size="sm" onClick={() => bump(p.id, 1)}>Add</Button>}
+              </div>
               </div>
             </div>
           ))}
