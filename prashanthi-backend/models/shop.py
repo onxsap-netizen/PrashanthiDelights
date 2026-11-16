@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Status = Literal["Pending", "Fulfilled", "Out for delivery", "Delivered", "Cancelled"]
+PayStatus = Literal["Unpaid", "Proof submitted", "Paid", "Failed"]
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -68,12 +69,36 @@ class Order(BaseModel):
     fee: int
     total: int
     paid: bool = False
+    payment_status: PayStatus = "Unpaid"
+    payment_ref: str = ""
+    has_proof: bool = False
     status: Status = "Pending"
     created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _old_orders(cls, data):
+        # orders saved before payment tracking existed only have the paid flag
+        if isinstance(data, dict) and "payment_status" not in data:
+            data = {**data, "payment_status": "Paid" if data.get("paid") else "Unpaid"}
+        return data
 
 class OrderPatch(BaseModel):
     status: Optional[Status] = None
     paid: Optional[bool] = None
+    payment_status: Optional[PayStatus] = None
+
+class ProofIn(BaseModel):
+    phone: str = Field(min_length=10)
+    utr: str = Field(default="", max_length=40)
+    image: str = Field(default="", max_length=400_000)
+
+    @field_validator("image")
+    @classmethod
+    def _img(cls, v):
+        if v and not v.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
+            raise ValueError("Proof must be a JPEG/PNG/WebP screenshot")
+        return v
 
 class Login(BaseModel):
     password: str
