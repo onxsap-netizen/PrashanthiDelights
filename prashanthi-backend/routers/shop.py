@@ -1,4 +1,4 @@
-import hashlib, hmac, os, random, uuid
+import base64, hashlib, hmac, os, random, uuid, zlib
 from datetime import timezone
 from typing import Optional
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
@@ -29,10 +29,32 @@ def _order(doc: dict) -> Order:
         doc["created_at"] = doc["created_at"].replace(tzinfo=timezone.utc)
     return Order(**doc)
 
+def _public(doc: dict) -> dict:
+    """Uploaded photos are stored as data URLs; hand out a small cacheable link instead."""
+    img = doc.get("image") or ""
+    if img.startswith("data:"):
+        doc["image"] = f"/api/products/{doc['id']}/image?v={zlib.crc32(img.encode()):x}"
+    return doc
+
 # ---------- public ----------
 @router.get("/products", response_model=list[Product])
 async def list_products():
-    return await db.products.find({"available": True}, NO_ID).sort("category", 1).to_list(500)
+    docs = await db.products.find({"available": True}, NO_ID).sort("category", 1).to_list(500)
+    return [_public(d) for d in docs]
+
+@router.get("/products/{id}/image")
+async def product_image(id: str):
+    doc = await db.products.find_one({"id": id}, {"_id": 0, "image": 1})
+    img = (doc or {}).get("image") or ""
+    if not img.startswith("data:"):
+        raise HTTPException(404, "No photo")
+    head, _, b64 = img.partition(",")
+    media = head[5:].split(";")[0] or "image/jpeg"
+    try:
+        raw = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(404, "No photo")
+    return Response(content=raw, media_type=media, headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
 
 @router.post("/orders", response_model=Order)
 async def create_order(body: OrderIn):
@@ -96,13 +118,14 @@ async def patch_order(id: str, body: OrderPatch):
 
 @router.get("/admin/products", response_model=list[Product], dependencies=[Depends(require_admin)])
 async def admin_products():
-    return await db.products.find({}, NO_ID).sort("category", 1).to_list(500)
+    docs = await db.products.find({}, NO_ID).sort("category", 1).to_list(500)
+    return [_public(d) for d in docs]
 
 @router.post("/admin/products", response_model=Product, dependencies=[Depends(require_admin)])
 async def add_product(body: ProductIn):
     p = Product(**body.model_dump())
     await db.products.insert_one(p.model_dump())
-    return p
+    return Product(**_public(p.model_dump()))
 
 @router.patch("/admin/products/{id}", response_model=Product, dependencies=[Depends(require_admin)])
 async def patch_product(id: str, body: ProductPatch):
@@ -112,7 +135,7 @@ async def patch_product(id: str, body: ProductPatch):
     doc = await db.products.find_one({"id": id}, NO_ID)
     if not doc:
         raise HTTPException(404, "Item not found")
-    return Product(**doc)
+    return Product(**_public(doc))
 
 @router.delete("/admin/products/{id}", dependencies=[Depends(require_admin)])
 async def del_product(id: str):
