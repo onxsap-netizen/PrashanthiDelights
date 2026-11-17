@@ -166,7 +166,7 @@ async def test_admin_stock_editing(e):
 async def test_online_blocked_until_configured(e):
     await add_product(e)
     r = await order(e, [("Mysore Pak 250g", 1)], method="Online")
-    assert r.status_code == 422
+    assert r.status_code == 503
     assert (await e.client.get("/config")).json()["online_pay"] is False
 
 
@@ -309,3 +309,118 @@ async def test_summary_whatsapp_to_owner_and_cron_auth(e):
 async def test_admin_endpoints_require_login(e):
     for m, u in [("GET", "/admin/summary"), ("GET", "/admin/notifications"), ("GET", "/admin/integrations"), ("POST", "/admin/summary/send")]:
         assert (await e.client.request(m, u)).status_code == 401
+
+
+# ---------------- online payment is mandatory ----------------
+async def test_cash_orders_rejected_when_online_only(e, monkeypatch):
+    from routers import shop
+    monkeypatch.setattr(shop, "ONLINE_ONLY", True)
+    e.set(**RZP_ENV)
+    await add_product(e, stock=5)
+    for m in ("Cash on delivery", "Pay at store", "UPI"):
+        r = await order(e, [("Mysore Pak 250g", 1)], method=m)
+        assert r.status_code == 422 and "online" in r.json()["detail"].lower()
+    assert await stock_of(e, "Mysore Pak 250g") == 5             # nothing reserved by the rejected orders
+    assert (await order(e, [("Mysore Pak 250g", 1)], method="Online")).status_code == 200
+    assert (await e.client.get("/config")).json()["online_required"] is True
+
+
+async def test_online_only_without_keys_is_closed_not_cash(e, monkeypatch):
+    from routers import shop
+    monkeypatch.setattr(shop, "ONLINE_ONLY", True)
+    await add_product(e)
+    assert (await order(e, [("Mysore Pak 250g", 1)], method="Online")).status_code == 503
+    assert (await order(e, [("Mysore Pak 250g", 1)], method="Cash on delivery")).status_code == 422
+
+
+# ---------------- stock planning ----------------
+async def test_summary_in_hand_pending_and_restock(e):
+    await add_product(e, "Mysore Pak 250g", 200, stock=20)
+    await add_product(e, "Mixture 225g", 135, stock=12, category="Savouries")
+    await add_product(e, "Ladu 250g", 100, stock=0)
+    await add_product(e, "Thattai 225g", 135, category="Savouries")
+    await login(e)
+    a = (await order(e, [("Mysore Pak 250g", 10), ("Mixture 225g", 9)])).json()      # 10 + 9 left of 20 / 12
+    b = (await order(e, [("Mysore Pak 250g", 5)])).json()
+    await e.client.patch(f"/admin/orders/{b['id']}", json={"status": "Delivered"})     # delivered: no longer pending
+    s = (await e.client.get("/admin/summary", params={"days": 1})).json()
+    r = {x["name"]: x for x in s["products"]}
+    assert r["Mysore Pak 250g"]["stock"] == 5 and r["Mysore Pak 250g"]["qty"] == 15 and r["Mysore Pak 250g"]["open_qty"] == 10
+    assert r["Mixture 225g"]["stock"] == 3 and r["Mixture 225g"]["open_qty"] == 9
+    # restock = a week of sales (15 / 9) or twice the low level (10), whichever is more, minus what is in hand
+    assert r["Mysore Pak 250g"]["restock"] == 10 and r["Mysore Pak 250g"]["level"] == "low"
+    assert r["Mixture 225g"]["restock"] == 7 and r["Mixture 225g"]["level"] == "low"
+    assert r["Ladu 250g"]["level"] == "out" and r["Ladu 250g"]["restock"] == 10
+    assert r["Thattai 225g"]["level"] == "untracked" and r["Thattai 225g"]["restock"] == 0
+    assert [x["name"] for x in s["stock"]["restock"]] == ["Ladu 250g", "Mixture 225g", "Mysore Pak 250g"]    # sold out first, then by name
+    assert s["stock"]["open_units"] == 19
+    # period filter changes "sold", never "in hand" / "pending"
+    s0 = (await e.client.get("/admin/summary", params={"days": 0})).json()
+    assert {x["name"]: x["open_qty"] for x in s0["products"]}["Mysore Pak 250g"] == 10
+
+
+async def test_summary_soon_flag_when_stock_below_weekly_sales(e):
+    await add_product(e, "Mysore Pak 250g", 200, stock=40)
+    await login(e)
+    await order(e, [("Mysore Pak 250g", 30)])          # 10 left (above the low level of 5) but a week of sales was 30
+    row = (await e.client.get("/admin/summary", params={"days": 7})).json()["products"][0]
+    assert row["stock"] == 10 and row["level"] == "soon" and row["restock"] == 20
+
+
+# ---------------- API keys from the dashboard ----------------
+async def test_settings_need_login(e):
+    assert (await e.client.get("/admin/settings")).status_code == 401
+    assert (await e.client.put("/admin/settings", json={"values": {"SITE_URL": "https://x.com"}})).status_code == 401
+    assert (await e.client.post("/admin/settings/test/razorpay")).status_code == 401
+
+
+async def test_saving_keys_switches_features_on_and_never_leaks_secrets(e):
+    await login(e)
+    assert (await e.client.get("/config")).json()["online_pay"] is False
+    r = await e.client.put("/admin/settings", json={"values": {"RAZORPAY_KEY_ID": "rzp_test_abc123", "RAZORPAY_KEY_SECRET": "supersecretvalue99",
+                                                              "SITE_URL": "https://shop.test/", "OWNER_WHATSAPP": "+91 98458-28903"}})
+    assert r.status_code == 200
+    assert "supersecretvalue99" not in r.text                               # secrets are never sent back
+    rows = {x["key"]: x for x in r.json()}
+    assert rows["RAZORPAY_KEY_SECRET"]["set"] and rows["RAZORPAY_KEY_SECRET"]["preview"].endswith("ue99") and rows["RAZORPAY_KEY_SECRET"]["source"] == "dashboard"
+    assert rows["RAZORPAY_KEY_ID"]["preview"] == "rzp_test_abc123"           # non-secret values are shown
+    assert rows["SITE_URL"]["preview"] == "https://shop.test" and rows["OWNER_WHATSAPP"]["preview"] == "9845828903"
+    cfg = (await e.client.get("/config")).json()
+    assert cfg["online_pay"] is True and cfg["razorpay_key"] == "rzp_test_abc123"
+    assert "supersecretvalue99" not in json.dumps(cfg)
+    integ = (await e.client.get("/admin/integrations")).json()
+    assert integ["razorpay"] and integ["site_url"] and integ["owner_whatsapp"] and not integ["whatsapp"]
+    # a blank field leaves the saved value alone; "clear" removes it
+    await e.client.put("/admin/settings", json={"values": {"RAZORPAY_KEY_ID": "", "SITE_URL": ""}})
+    assert (await e.client.get("/config")).json()["online_pay"] is True
+    await e.client.put("/admin/settings", json={"values": {}, "clear": ["RAZORPAY_KEY_SECRET"]})
+    assert (await e.client.get("/config")).json()["online_pay"] is False
+
+
+async def test_dashboard_value_beats_server_env_and_env_is_fallback(e):
+    e.set(RAZORPAY_KEY_ID="rzp_test_fromenv", RAZORPAY_KEY_SECRET="envsecret1234")
+    await login(e)
+    rows = {x["key"]: x for x in (await e.client.get("/admin/settings")).json()}
+    assert rows["RAZORPAY_KEY_ID"]["source"] == "server" and rows["RAZORPAY_KEY_ID"]["set"]
+    await e.client.put("/admin/settings", json={"values": {"RAZORPAY_KEY_ID": "rzp_live_fromdash"}})
+    assert (await e.client.get("/config")).json()["razorpay_key"] == "rzp_live_fromdash"
+    await e.client.put("/admin/settings", json={"values": {}, "clear": ["RAZORPAY_KEY_ID"]})
+    assert (await e.client.get("/config")).json()["razorpay_key"] == "rzp_test_fromenv"
+
+
+async def test_settings_validation_and_unknown_keys(e):
+    await login(e)
+    for k, v in [("RAZORPAY_KEY_ID", "wrong"), ("OWNER_WHATSAPP", "12345"), ("SITE_URL", "shop.com"), ("CRON_SECRET", "short"), ("WHATSAPP_PHONE_NUMBER_ID", "abc")]:
+        r = await e.client.put("/admin/settings", json={"values": {k: v}})
+        assert r.status_code == 422, k
+    assert (await e.client.put("/admin/settings", json={"values": {"ADMIN_PASSWORD": "hacked1234"}})).status_code == 422   # only whitelisted keys
+    assert (await e.client.get("/admin/settings")).status_code == 200
+    # pasted with quotes / spaces is cleaned
+    r = await e.client.put("/admin/settings", json={"values": {"RAZORPAY_KEY_ID": ' "rzp_test_abc123" '}})
+    assert r.status_code == 200 and {x["key"]: x for x in r.json()}["RAZORPAY_KEY_ID"]["preview"] == "rzp_test_abc123"
+
+
+async def test_connection_tests_use_saved_keys(e):
+    await login(e)
+    assert (await e.client.post("/admin/settings/test/razorpay")).json()["ok"] is False        # nothing saved yet
+    assert (await e.client.post("/admin/settings/test/nope")).status_code == 404

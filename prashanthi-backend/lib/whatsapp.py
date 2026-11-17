@@ -14,6 +14,7 @@ Each event is sent at most once per order (an atomic claim on the order), so ret
 import asyncio, os, re
 from typing import Optional
 import httpx
+from lib import settings
 from lib.db import db
 from models.shop import utcnow
 
@@ -52,7 +53,7 @@ STATUS_EVENT = {"Fulfilled": "order_ready", "Out for delivery": "order_dispatche
 
 
 def _env(k: str, d: str = "") -> str:
-    return os.environ.get(k, d).strip()
+    return settings.get(k, d)
 
 
 def enabled() -> bool:

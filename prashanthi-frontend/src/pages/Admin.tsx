@@ -10,6 +10,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { payLabel, rupees, STATUSES } from "@/lib/shop";
 import { WaCell } from "@/pages/AdminWhatsApp";
 import { SummaryTab } from "@/pages/AdminSummary";
+import { SettingsTab } from "@/pages/AdminSettings";
 import { downloadCsv } from "@/lib/csv";
 import { shrinkPhoto } from "@/lib/image";
 import type { Order, Product } from "@/lib/shop";
@@ -73,7 +74,7 @@ function ProductDetails({ p, onSave }: { p: Product; onSave: (body: object) => v
 
 function Dashboard() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"orders" | "summary" | "menu">("orders");
+  const [tab, setTab] = useState<"orders" | "summary" | "menu" | "settings">("orders");
   const [range, setRange] = useState("Last 7 days");
   const [st, setSt] = useState("All statuses");
   const [ful, setFul] = useState("All types");
@@ -137,6 +138,7 @@ function Dashboard() {
         <Button variant={tab === "orders" ? "default" : "outline"} onClick={() => setTab("orders")}>Orders</Button>
         <Button variant={tab === "summary" ? "default" : "outline"} onClick={() => setTab("summary")}>Summary & stock</Button>
         <Button variant={tab === "menu" ? "default" : "outline"} onClick={() => setTab("menu")}>Menu and prices</Button>
+        <Button variant={tab === "settings" ? "default" : "outline"} onClick={() => setTab("settings")}>Settings</Button>
       </div>
       {tab === "orders" ? (
         <div className="mx-auto max-w-6xl space-y-4 px-5 pb-12 pt-4">
@@ -179,7 +181,7 @@ function Dashboard() {
             </table>
           </div>
         </div>
-      ) : tab === "summary" ? <SummaryTab /> : (
+      ) : tab === "summary" ? <SummaryTab onOpenSettings={() => setTab("settings")} /> : tab === "settings" ? <SettingsTab /> : (
         <div className="mx-auto max-w-4xl px-5 pb-12 pt-4">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm opacity-70">Tap a photo box to add or change a photo. Photos are shrunk automatically.</p>

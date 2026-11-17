@@ -27,8 +27,7 @@ export default function Checkout() {
   const { prefs, setPrefs, clear, rememberOrder } = useStore();
   const { valid, missing, subtotal, fee, total, mode, ready, isError, isLoading } = useCartLines();
   const cfg = useShopConfig();
-  const upiOn = !!cfg.data?.upi_id;
-  const onlineOn = !!cfg.data?.online_pay;
+  const onlineOn = !!cfg.data?.online_pay;   // payment is online-only: no cash on delivery, no pay at store
   const waOn = !!cfg.data?.whatsapp;
   const days = useMemo(() => pickupSlots(), []);
 
@@ -37,13 +36,10 @@ export default function Checkout() {
   const [address, setAddress] = useState(prefs.address);
   const [day, setDay] = useState(0);
   const [time, setTime] = useState("");
-  const [chosenPay, setPay] = useState<string>("");
   const [errs, setErrs] = useState<Errs>({});
   const placed = useRef(false);
 
-  const offline = mode === "Pickup" ? "Pay at store" : "Cash on delivery";
-  // The customer's own choice wins; otherwise default to online payment (if the shop has it), then UPI, else pay on receipt.
-  const pay = chosenPay === "Online" && onlineOn ? "Online" : chosenPay === "UPI" && upiOn ? "UPI" : chosenPay === offline ? offline : onlineOn ? "Online" : upiOn ? "UPI" : offline;
+  const pay = "Online";
   useEffect(() => { setTime(days[day]?.times[0] ?? ""); }, [day, days]);
 
   const place = useMutation({
@@ -78,16 +74,11 @@ export default function Checkout() {
       return;
     }
     if (missing.length) return toast.error("An item in your basket is no longer available. Please review your basket.");
+    if (!onlineOn) return toast.error("Online payment isn’t available right now. Please try again shortly.");
     place.mutate();
   };
 
-  const blocked = place.isPending || !ready || valid.length === 0 || missing.length > 0;
-  const payOpts: { v: string; title: string; sub: string }[] = [
-    ...(onlineOn ? [{ v: "Online", title: "Pay online", sub: "UPI, debit / credit card or net banking. Instant confirmation" }] : []),
-    ...(upiOn ? [{ v: "UPI", title: onlineOn ? "Direct UPI transfer" : "UPI", sub: onlineOn ? "Pay to our UPI ID yourself; we confirm it manually" : "Pay with GPay, PhonePe, Paytm or any UPI app after placing your order" }] : []),
-    { v: offline, title: offline, sub: mode === "Pickup" ? "Pay when you collect your order" : "Pay when your order arrives" },
-  ];
-
+  const blocked = place.isPending || !ready || valid.length === 0 || missing.length > 0 || !onlineOn;
   return (
     <div className="mx-auto max-w-5xl px-4 pt-4 md:px-6">
       {(isError || missing.length > 0) && (
@@ -122,16 +113,15 @@ export default function Checkout() {
           </Section>
 
           <Section title="Payment">
-            <div role="radiogroup" aria-label="Payment method" className="grid gap-3">
-              {payOpts.map((o) => (
-                <label key={o.v} className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-gold ${pay === o.v ? "border-maroon-700 bg-maroon-50" : "border-beige-200"}`}>
-                  <input type="radio" name="pay" value={o.v} checked={pay === o.v} onChange={() => setPay(o.v)} className="sr-only" />
-                  <span aria-hidden className={`grid size-6 shrink-0 place-items-center rounded-full border-2 ${pay === o.v ? "border-maroon-700 bg-maroon-700 text-white" : "border-beige-200"}`}>{pay === o.v && <CheckIcon width={14} height={14} strokeWidth={3} />}</span>
-                  <span className="leading-snug"><b className="block text-[16px]">{o.title}</b><span className="text-sm text-ink-soft">{o.sub}</span></span>
-                </label>
-              ))}
-            </div>
-            <p className="flex items-center gap-2 text-sm text-ink-soft"><ShieldIcon width={18} height={18} className="shrink-0 text-leaf" />{pay === "Online" ? "Card and UPI details are entered on Razorpay’s secure window. We never see them." : "We never ask for card or bank details."}</p>
+            {cfg.isLoading ? <div className="skeleton h-20 rounded-2xl" /> : onlineOn ? (
+              <div className="flex min-h-16 items-center gap-3 rounded-2xl border-2 border-maroon-700 bg-maroon-50 p-4">
+                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full border-2 border-maroon-700 bg-maroon-700 text-white"><CheckIcon width={14} height={14} strokeWidth={3} /></span>
+                <span className="leading-snug"><b className="block text-[16px]">Pay online</b><span className="text-sm text-ink-soft">UPI, debit / credit card or net banking. Your order is confirmed as soon as the payment goes through.</span></span>
+              </div>
+            ) : (
+              <div role="alert" className="rounded-2xl bg-gold-100 p-4 text-[15px] font-medium text-maroon-900">Online payment isn’t available right now, so we can’t take new orders at this moment. Please try again shortly or call us on <b>{SITE.phoneDisplay}</b>.</div>
+            )}
+            <p className="flex items-center gap-2 text-sm text-ink-soft"><ShieldIcon width={18} height={18} className="shrink-0 text-leaf" />Card and UPI details are entered in Razorpay’s secure window. We never see them. We don’t take cash on delivery.</p>
             {waOn && <p className="text-sm text-ink-soft">We’ll send your order confirmation and updates on WhatsApp to the mobile number above.</p>}
           </Section>
         </form>
@@ -146,7 +136,7 @@ export default function Checkout() {
               {valid.map((l) => <li key={l.id} className="flex justify-between gap-3"><span>{baseName(l.product!.name)}{l.product!.name !== baseName(l.product!.name) && <span className="text-ink-soft"> · {l.product!.name.slice(baseName(l.product!.name).length).replace(/[()]/g, "").trim()}</span>} <span className="text-ink-soft">× {l.qty}</span></span><b className="tabular-nums">{rupees(l.product!.price * l.qty)}</b></li>)}
             </ul>
             <div className="mt-3"><Summary subtotal={subtotal} fee={fee} total={total} mode={mode} /></div>
-            <button onClick={submit} disabled={blocked} className="mt-5 hidden h-14 w-full rounded-full bg-maroon-700 text-lg font-extrabold text-white shadow-lift active:scale-[.98] disabled:opacity-60 md:block">{place.isPending ? "Placing order…" : `Place order · ${rupees(total)}`}</button>
+            <button onClick={submit} disabled={blocked} className="mt-5 hidden h-14 w-full rounded-full bg-maroon-700 text-lg font-extrabold text-white shadow-lift active:scale-[.98] disabled:opacity-60 md:block">{place.isPending ? "Placing order…" : `Pay & place order · ${rupees(total)}`}</button>
           </details>
           <Link to="/cart" className="mt-3 block min-h-11 py-2 text-center text-sm font-bold text-maroon-700 underline underline-offset-4">Edit basket</Link>
         </aside>
@@ -154,7 +144,7 @@ export default function Checkout() {
 
       <div className="safe-b fixed inset-x-0 bottom-0 z-40 border-t border-beige-200 bg-cream-50/97 px-4 pt-3 shadow-[0_-10px_30px_-14px_rgb(67_15_12/.35)] backdrop-blur md:hidden">
         <button onClick={submit} disabled={blocked} className="mb-3 flex h-14 w-full items-center justify-between rounded-full bg-maroon-700 px-6 text-white shadow-lift active:scale-[.98] disabled:opacity-60">
-          <span className="text-[17px] font-extrabold">{place.isPending ? "Placing order…" : "Place order"}</span><span className="text-[17px] font-extrabold tabular-nums">{rupees(total)}</span>
+          <span className="text-[17px] font-extrabold">{place.isPending ? "Placing order…" : "Pay & place order"}</span><span className="text-[17px] font-extrabold tabular-nums">{rupees(total)}</span>
         </button>
       </div>
     </div>

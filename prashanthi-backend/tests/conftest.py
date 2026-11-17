@@ -7,7 +7,8 @@ from mongomock_motor import AsyncMongoMockClient
 _db.db = AsyncMongoMockClient()["test"]          # must happen before the routers import `db`
 
 import httpx, pytest, pytest_asyncio
-from lib import razorpay, whatsapp
+from lib import razorpay, settings as _settings, whatsapp
+from routers import shop as _shop
 from server import app
 
 WA_ENV = dict(WHATSAPP_TOKEN="tok", WHATSAPP_PHONE_NUMBER_ID="123", OWNER_WHATSAPP="+91 99999 00000", SITE_URL="https://shop.test")
@@ -44,6 +45,8 @@ async def e(monkeypatch):
     for k in list(os.environ):
         if k.startswith(("WHATSAPP_", "RAZORPAY_", "OWNER_", "SITE_URL", "LOW_STOCK", "CRON_")):
             monkeypatch.delenv(k)
+    _settings._cache.clear(); _settings._loaded_at = 0.0
+    monkeypatch.setattr(_shop, "ONLINE_ONLY", False)   # older tests place cash orders; the online-only rule has its own tests
     fakes = Fakes()
     real = httpx.AsyncClient
     monkeypatch.setattr(whatsapp.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(fakes.handler), **{k: v for k, v in kw.items() if k != "transport"}))

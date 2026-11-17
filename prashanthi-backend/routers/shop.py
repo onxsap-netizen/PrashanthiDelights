@@ -3,8 +3,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
+from pydantic import BaseModel
 from pymongo import ASCENDING, DESCENDING, IndexModel
-from lib import razorpay, stock, whatsapp
+from lib import razorpay, settings, stock, whatsapp
 from lib.db import INDEXES, db
 from models.shop import (Login, NotifyIn, Order, OrderIn, OrderItem, OrderPatch, PayStart, PayVerify, Product,
                          ProductIn, ProductPatch, ProofIn, norm_phone, utcnow)
@@ -20,8 +21,12 @@ INDEXES["orders"] = [
 INDEXES["notifications"] = [IndexModel([("created_at", DESCENDING)], name="created", expireAfterSeconds=90 * 86400)]
 IST = ZoneInfo("Asia/Kolkata")
 UNPAID_ONLINE_MINUTES = 30   # an online order nobody paid for is cancelled and its stock released
-router = APIRouter()
+async def _load_settings() -> None:
+    await settings.load()   # dashboard-saved keys (cached for a few seconds)
+
+router = APIRouter(dependencies=[Depends(_load_settings)])
 NO_ID = {"_id": 0}
+ONLINE_ONLY = True   # every new order must be paid online (no cash on delivery / pay at store)
 
 def _token() -> str:
     return hashlib.sha256((os.environ.get("ADMIN_PASSWORD", "prashanthi123") + "|prs").encode()).hexdigest()
@@ -87,8 +92,11 @@ async def product_image(id: str):
 async def create_order(body: OrderIn):
     if body.mode == "Delivery" and not body.address.strip():
         raise HTTPException(422, "Delivery address is required")
+    # every order is paid online (no cash on delivery / pay at store)
+    if ONLINE_ONLY and body.payment_method != "Online":
+        raise HTTPException(422, "Please pay online to place your order.")
     if body.payment_method == "Online" and not razorpay.enabled():
-        raise HTTPException(422, "Online payment isn't available right now. Please choose another payment method.")
+        raise HTTPException(503, "Online payment isn't available right now. Please try again shortly or call the shop.")
     await _sweep_unpaid_online()
     prods = {p["id"]: p async for p in db.products.find({"id": {"$in": [i.product_id for i in body.items]}, "available": True}, NO_ID)}
     items, lines = [], []
@@ -124,7 +132,7 @@ async def create_order(body: OrderIn):
 async def config():
     """Public shop settings: the UPI id customers pay to."""
     return {"upi_id": os.environ.get("UPI_ID", "").strip(), "upi_name": os.environ.get("UPI_NAME", "Prashanthi Delights").strip(),
-            "online_pay": razorpay.enabled(), "razorpay_key": razorpay.key_id() if razorpay.enabled() else "",
+            "online_pay": razorpay.enabled(), "online_required": True, "razorpay_key": razorpay.key_id() if razorpay.enabled() else "",
             "whatsapp": whatsapp.enabled(), "low_stock_at": stock.low_threshold()}
 
 @router.post("/orders/{code}/proof", response_model=Order)
@@ -312,7 +320,7 @@ async def notifications(limit: int = 50):
 @router.get("/admin/integrations", dependencies=[Depends(require_admin)])
 async def integrations():
     """A setup checklist: which of the optional services are switched on."""
-    e = lambda k: bool(os.environ.get(k, "").strip())
+    e = lambda k: bool(settings.get(k))
     return {"razorpay": razorpay.enabled(), "razorpay_webhook": e("RAZORPAY_WEBHOOK_SECRET"),
             "whatsapp": whatsapp.enabled(), "owner_whatsapp": e("OWNER_WHATSAPP"), "site_url": e("SITE_URL"),
             "cron": e("CRON_SECRET"), "low_stock_at": stock.low_threshold()}
@@ -381,10 +389,28 @@ def _since(days: int) -> Optional[datetime]:
 def _aware(d: datetime) -> datetime:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
+OPEN_STATUSES = ("Pending", "Fulfilled", "Out for delivery")   # ordered, but not yet delivered / collected
+MIN_COVER = 2   # suggested restock covers at least this many times the low-stock level
+
 async def build_summary(days: int = 1) -> dict:
     since = _since(days)
-    docs = [d for d in await db.orders.find({}, NO_ID).to_list(5000) if since is None or _aware(d["created_at"]) >= since]
+    all_docs = await db.orders.find({}, NO_ID).to_list(5000)
+    docs = [d for d in all_docs if since is None or _aware(d["created_at"]) >= since]
     live = [d for d in docs if d["status"] != "Cancelled"]
+    # demand that does not depend on the selected period
+    since7 = _since(7)
+    sold7: dict[str, int] = {}
+    open_qty: dict[str, int] = {}
+    for d in all_docs:
+        if d["status"] == "Cancelled":
+            continue
+        recent = _aware(d["created_at"]) >= since7
+        for i in d["items"]:
+            if recent:
+                sold7[i["name"]] = sold7.get(i["name"], 0) + i["qty"]
+            if d["status"] in OPEN_STATUSES:
+                open_qty[i["name"]] = open_qty.get(i["name"], 0) + i["qty"]
+    thr = stock.low_threshold()
     menu = await db.products.find({}, NO_ID).to_list(1000)
     by_name: dict[str, dict] = {}
     for p in menu:
@@ -395,11 +421,22 @@ async def build_summary(days: int = 1) -> dict:
             r = by_name.setdefault(i["name"], {"id": "", "name": i["name"], "category": "Removed from menu", "qty": 0, "orders": 0,
                                                "amount": 0, "stock": None, "available": False})
             r["qty"] += i["qty"]; r["orders"] += 1; r["amount"] += i["qty"] * i["price"]
+    for r in by_name.values():
+        r["open_qty"] = open_qty.get(r["name"], 0)     # in orders not yet delivered (already taken out of stock)
+        r["sold_7d"] = sold7.get(r["name"], 0)
+        st = r["stock"]
+        if st is None or not r["id"]:
+            r["level"], r["restock"] = "untracked", 0
+        else:
+            # enough for a week of recent sales, and never less than twice the low-stock level
+            target = max(r["sold_7d"], thr * MIN_COVER)
+            r["restock"] = max(0, target - st)
+            r["level"] = "out" if st == 0 else ("low" if st <= thr else ("soon" if st < r["sold_7d"] else "ok"))
     products = sorted(by_name.values(), key=lambda r: (-r["qty"], r["name"]))
-    thr = stock.low_threshold()
     tracked = [r for r in products if r["stock"] is not None and r["id"]]
     count = lambda key: {k: sum(1 for d in docs if d[key] == k) for k in sorted({d[key] for d in docs})}
     label = "today" if days == 1 else ("all time" if days <= 0 else f"last {days} days")
+    need = sorted((r for r in tracked if r["restock"] > 0 and r["level"] != "ok"), key=lambda r: (["out", "low", "soon"].index(r["level"]), r["name"]))
     return {
         "days": days, "label": label, "date": datetime.now(IST).strftime("%d %b %Y"),
         "orders": len(live), "cancelled": len(docs) - len(live), "items_sold": sum(r["qty"] for r in products),
@@ -408,8 +445,11 @@ async def build_summary(days: int = 1) -> dict:
         "by_status": count("status"), "by_mode": count("mode"), "by_payment": count("payment_method"),
         "products": products,
         "stock": {"tracked": len(tracked), "untracked": len([r for r in products if r["stock"] is None and r["id"]]), "low_at": thr,
+                  "open_units": sum(open_qty.values()),
                   "out": [r["name"] for r in tracked if r["stock"] == 0],
-                  "low": [{"name": r["name"], "stock": r["stock"]} for r in tracked if 0 < r["stock"] <= thr]},
+                  "low": [{"name": r["name"], "stock": r["stock"]} for r in tracked if 0 < r["stock"] <= thr],
+                  "restock": [{"name": r["name"], "category": r["category"], "stock": r["stock"], "sold_7d": r["sold_7d"],
+                               "need": r["restock"], "level": r["level"]} for r in need]},
     }
 
 @router.get("/admin/summary", dependencies=[Depends(require_admin)])
@@ -436,9 +476,59 @@ async def summary_send(days: int = 1):
 @router.get("/cron/daily-summary")
 async def cron_daily_summary(authorization: Optional[str] = Header(None), key: Optional[str] = None):
     """Hit once a day (Vercel Cron or cron-job.org). Protected by CRON_SECRET."""
-    secret = os.environ.get("CRON_SECRET", "").strip()
+    secret = settings.get("CRON_SECRET")
     given = (authorization or "").removeprefix("Bearer ").strip() or (key or "")
     if not secret or not hmac.compare_digest(given, secret):
         raise HTTPException(401, "Not allowed")
     await _sweep_unpaid_online()
     return {"status": await _send_summary(1)}
+
+
+# ---------- settings / API keys (admin dashboard) ----------
+class SettingsIn(BaseModel):
+    values: dict[str, str] = {}
+    clear: list[str] = []
+
+@router.get("/admin/settings", dependencies=[Depends(require_admin)])
+async def get_settings():
+    """Which keys are set, where they come from, and a masked preview. Secret values are never returned."""
+    return await settings.view()
+
+@router.put("/admin/settings", dependencies=[Depends(require_admin)])
+async def put_settings(body: SettingsIn):
+    """Save keys from the dashboard. Empty values are ignored (use `clear` to remove a saved key)."""
+    bad = [k for k in list(body.values) + body.clear if k not in settings.FIELDS]
+    if bad:
+        raise HTTPException(422, f"Unknown setting: {bad[0]}")
+    try:
+        await settings.save(body.values, body.clear)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return await settings.view()
+
+@router.post("/admin/settings/test/{service}", dependencies=[Depends(require_admin)])
+async def test_settings(service: str):
+    """Check the saved keys really work, so a typo is caught now and not on a customer's order."""
+    import httpx
+    await settings.load(force=True)
+    try:
+        async with httpx.AsyncClient(timeout=12) as c:
+            if service == "razorpay":
+                if not razorpay.enabled():
+                    return {"ok": False, "message": "Add the Razorpay Key ID and Key Secret first."}
+                r = await c.get(f"{razorpay.API}/orders", params={"count": 1}, auth=(razorpay.key_id(), settings.get("RAZORPAY_KEY_SECRET")))
+                if r.status_code == 200:
+                    mode = "TEST" if razorpay.key_id().startswith("rzp_test_") else "LIVE"
+                    return {"ok": True, "message": f"Razorpay connected ({mode} mode)."}
+                return {"ok": False, "message": "Razorpay rejected these keys. Check the Key ID and Secret belong together and are for the same mode (test/live)."}
+            if service == "whatsapp":
+                if not whatsapp.enabled():
+                    return {"ok": False, "message": "Add the WhatsApp token and phone number ID first."}
+                r = await c.get(f"https://graph.facebook.com/{os.environ.get('WHATSAPP_API_VERSION', 'v21.0')}/{settings.get('WHATSAPP_PHONE_NUMBER_ID')}",
+                                params={"fields": "display_phone_number,verified_name"}, headers={"Authorization": f"Bearer {settings.get('WHATSAPP_TOKEN')}"})
+                if r.status_code == 200:
+                    return {"ok": True, "message": f"WhatsApp connected ({r.json().get('display_phone_number', 'number found')})."}
+                return {"ok": False, "message": "Meta rejected the token or phone number ID. Check both and that the token has whatsapp_business_messaging permission."}
+    except Exception:
+        return {"ok": False, "message": "Couldn't reach the service. Try again in a moment."}
+    raise HTTPException(404, "Unknown service")

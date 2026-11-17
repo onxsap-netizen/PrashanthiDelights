@@ -5,6 +5,7 @@ order is cancelled or an online payment is abandoned. All changes are single ato
 """
 import os
 from pymongo import ReturnDocument
+from lib import settings
 from lib.db import db
 
 NO_ID = {"_id": 0}
@@ -12,7 +13,7 @@ NO_ID = {"_id": 0}
 
 def low_threshold() -> int:
     try:
-        return max(0, int(os.environ.get("LOW_STOCK_AT", "5")))
+        return max(0, int(settings.get("LOW_STOCK_AT", "5")))
     except ValueError:
         return 5
 
