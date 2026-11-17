@@ -1,9 +1,10 @@
-import os
+import logging, os
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from lib.db import ensure_indexes
 from routers.shop import router as shop_router
 
+log = logging.getLogger("prashanthi")
 app = FastAPI(title="Prashanthi Delights")
 api_router = APIRouter(prefix="/api")
 api_router.include_router(shop_router)
@@ -15,9 +16,10 @@ async def health():
 
 
 app.include_router(api_router)
+_origins = [o.strip().strip('"') for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,4 +28,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    await ensure_indexes()
+    # Index creation must never stop the API from starting (e.g. index already exists with other options).
+    try:
+        await ensure_indexes()
+    except Exception as e:  # noqa: BLE001
+        log.warning("ensure_indexes failed: %s", e)
