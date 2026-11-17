@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { brand, serif } from "@/components/ShopHeader";
+import { brand, serif } from "@/lib/brand";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { rupees, STATUSES } from "@/lib/shop";
 import { downloadCsv } from "@/lib/csv";
@@ -45,6 +45,27 @@ function Photo({ product, onSet }: { product: Product; onSet: (image: string) =>
       </button>
       <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files?.[0])} />
     </div>
+  );
+}
+
+
+const TAGS = ["Best Seller", "New", "Festive", "Gift"] as const;
+/** Optional storefront details. Anything left empty is simply not shown to customers. */
+function ProductDetails({ p, onSave }: { p: Product; onSave: (body: object) => void }) {
+  const tags = p.tags ?? [];
+  const area = "w-full rounded-lg border border-[#d9c9ad] bg-white px-3 py-2 text-sm outline-none focus:border-[#7a1a2b]";
+  return (
+    <details className="basis-full pb-1 text-sm">
+      <summary className="cursor-pointer select-none py-1 font-semibold text-[#7a231c]">Shop page details{(p.description || p.ingredients || p.original_price || tags.length) ? " ✓" : ""}</summary>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <label className="grid gap-1 sm:col-span-2">Description<textarea rows={2} maxLength={600} className={area} defaultValue={p.description ?? ""} onBlur={(e) => e.target.value !== (p.description ?? "") && onSave({ description: e.target.value })} /></label>
+        <label className="grid gap-1 sm:col-span-2">Ingredients<textarea rows={2} maxLength={400} className={area} defaultValue={p.ingredients ?? ""} onBlur={(e) => e.target.value !== (p.ingredients ?? "") && onSave({ ingredients: e.target.value })} /></label>
+        <label className="grid gap-1">Original price ₹ (shows a discount when higher than the price; 0 clears it)<input type="number" min={0} className={area} defaultValue={p.original_price ?? ""} onBlur={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); if (v !== (p.original_price ?? 0)) onSave({ original_price: v }); }} /></label>
+        <div className="grid gap-1"><span>Homepage badges</span>
+          <div className="flex flex-wrap gap-1.5">{TAGS.map((t) => { const on = tags.includes(t); return <button key={t} type="button" aria-pressed={on} onClick={() => onSave({ tags: on ? tags.filter((x) => x !== t) : [...tags, t] })} className={`rounded-full border px-3 py-1 text-xs font-semibold ${on ? "border-[#7a231c] bg-[#7a231c] text-white" : "border-[#d9c9ad] bg-white"}`}>{t}</button>; })}</div>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -142,7 +163,9 @@ function Dashboard() {
                     <td className="px-4 py-3">{o.name}<div className="text-xs opacity-60">{o.phone}</div></td>
                     <td className="max-w-56 px-4 py-3 text-xs">{o.items.map((i) => `${i.name} × ${i.qty}`).join(", ")}</td>
                     <td className="px-4 py-3">{o.mode}<div className="text-xs opacity-60">{o.mode === "Pickup" ? o.slot : o.address}</div></td>
-                    <td className="px-4 py-3">{o.payment_method}<div><button className={`mt-1 rounded-full px-2 py-0.5 text-xs font-semibold ${o.paid ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-900"}`} onClick={() => patchOrder.mutate({ id: o.id, body: { paid: !o.paid } })}>{o.paid ? "Paid" : "Mark paid"}</button></div></td>
+                    <td className="px-4 py-3">{o.payment_method}
+                      {o.payment_status === "Proof submitted" && <div className="mt-1 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-900"><b>Customer says paid</b>{o.payment_ref && <div>UTR: {o.payment_ref}</div>}{o.has_proof && <a className="font-semibold underline" href={`/api/admin/orders/${o.id}/proof`} target="_blank" rel="noopener noreferrer">View screenshot</a>}</div>}
+                      <div><button className={`mt-1 rounded-full px-2 py-0.5 text-xs font-semibold ${o.paid ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-900"}`} onClick={() => patchOrder.mutate({ id: o.id, body: { paid: !o.paid } })}>{o.paid ? "Paid" : "Mark paid"}</button></div></td>
                     <td className="px-4 py-3 font-bold">{rupees(o.total)}</td>
                     <td className="px-4 py-3"><select aria-label="Order status" className={`h-8 rounded-full border-0 px-2 text-xs font-semibold ${TONE[o.status]}`} value={o.status} onChange={(e) => patchOrder.mutate({ id: o.id, body: { status: e.target.value } })}>{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
                   </tr>
@@ -166,6 +189,7 @@ function Dashboard() {
               {p.image && <Button size="sm" variant="outline" onClick={() => patchProd.mutate({ id: p.id, body: { image: "" } })}>Remove photo</Button>}
               <Button size="sm" variant={p.available ? "default" : "outline"} onClick={() => patchProd.mutate({ id: p.id, body: { available: !p.available } })}>{p.available ? "Available" : "Hidden"}</Button>
               <Button size="sm" variant="destructive" onClick={() => confirm(`Remove ${p.name}?`) && delProd.mutate(p.id)}>Remove</Button>
+              <ProductDetails p={p} onSave={(body) => patchProd.mutate({ id: p.id, body })} />
             </div>
           ))}
           <h2 className="mb-2 mt-6 text-xl font-bold" style={serif}>Add an item</h2>

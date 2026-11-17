@@ -1,5 +1,5 @@
 // Shrinks a photo in the browser so it is small enough to store and load fast.
-export async function shrinkPhoto(file: File, maxSide = 480): Promise<string> {
+export async function shrinkPhoto(file: File, maxSide = 720, limit = 200_000): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Please choose a photo (JPG or PNG).");
   const url = URL.createObjectURL(file);
   try {
@@ -19,7 +19,7 @@ export async function shrinkPhoto(file: File, maxSide = 480): Promise<string> {
     g.drawImage(img, 0, 0, c.width, c.height);
     for (const q of [0.78, 0.65, 0.5, 0.4]) {
       const out = c.toDataURL("image/jpeg", q);
-      if (out.length < 200_000) return out;
+      if (out.length < limit) return out;
     }
     throw new Error("That photo is too detailed. Try a smaller one.");
   } finally {

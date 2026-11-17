@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 Status = Literal["Pending", "Fulfilled", "Out for delivery", "Delivered", "Cancelled"]
 PayStatus = Literal["Unpaid", "Proof submitted", "Paid", "Failed"]
+# Optional storefront badges the owner can switch on per item (all optional, old items have none).
+Tag = Literal["Best Seller", "New", "Festive", "Gift"]
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -23,6 +25,11 @@ class ProductIn(BaseModel):
     price: int = Field(ge=0)
     available: bool = True
     image: str = Field(default="", max_length=300_000)
+    # Optional details shown on the product page. Empty = the storefront simply hides them.
+    description: str = Field(default="", max_length=600)
+    ingredients: str = Field(default="", max_length=400)
+    original_price: Optional[int] = Field(default=None, ge=0)
+    tags: list[Tag] = Field(default_factory=list, max_length=4)
 
     _img = field_validator("image")(_check_image)
 
@@ -35,6 +42,10 @@ class ProductPatch(BaseModel):
     price: Optional[int] = Field(None, ge=0)
     available: Optional[bool] = None
     image: Optional[str] = Field(None, max_length=300_000)
+    description: Optional[str] = Field(None, max_length=600)
+    ingredients: Optional[str] = Field(None, max_length=400)
+    original_price: Optional[int] = Field(None, ge=0)
+    tags: Optional[list[Tag]] = Field(None, max_length=4)
 
     _img = field_validator("image")(_check_image)
 
