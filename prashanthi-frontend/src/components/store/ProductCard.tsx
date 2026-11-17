@@ -35,6 +35,7 @@ export function ProductCard({ item, eager = false }: { item: Item; eager?: boole
       <div className="flex flex-1 flex-col gap-1.5 p-3 pt-3">
         <Link to={to} className="line-clamp-2 text-[15px] font-semibold leading-snug text-ink">{item.base}</Link>
         <div className="flex flex-wrap items-center gap-x-2 text-xs text-ink-soft">
+          {!multi && typeof p.stock === "number" && p.stock > 0 && <span className="rounded-full bg-gold-100 px-2 py-0.5 font-bold text-maroon-800">Only {p.stock} left</span>}
           {multi ? <span>{item.variants.length} sizes</span> : p.pack ? <span className="rounded-full bg-beige px-2 py-0.5 font-medium">{p.pack}</span> : <span>{item.category}</span>}
         </div>
         <div className="mt-auto flex items-baseline gap-2 pt-1">

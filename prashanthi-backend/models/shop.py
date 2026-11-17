@@ -11,6 +11,15 @@ Tag = Literal["Best Seller", "New", "Festive", "Gift"]
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
+def norm_phone(raw: str) -> str:
+    """"+91 98458-28903" -> "9845828903". Anything that is not an Indian mobile is returned trimmed, unchanged."""
+    d = "".join(c for c in (raw or "") if c.isdigit())
+    if len(d) == 12 and d.startswith("91"):
+        d = d[2:]
+    elif len(d) == 11 and d.startswith("0"):
+        d = d[1:]
+    return d if len(d) == 10 else (raw or "").strip()
+
 def _check_image(v):
     if v is None or v == "":
         return v
@@ -30,6 +39,8 @@ class ProductIn(BaseModel):
     ingredients: str = Field(default="", max_length=400)
     original_price: Optional[int] = Field(default=None, ge=0)
     tags: list[Tag] = Field(default_factory=list, max_length=4)
+    # Units in stock. None = not tracked (always available). 0 = sold out (hidden from the storefront).
+    stock: Optional[int] = Field(default=None, ge=0, le=100_000)
 
     _img = field_validator("image")(_check_image)
 
@@ -46,6 +57,9 @@ class ProductPatch(BaseModel):
     ingredients: Optional[str] = Field(None, max_length=400)
     original_price: Optional[int] = Field(None, ge=0)
     tags: Optional[list[Tag]] = Field(None, max_length=4)
+    stock: Optional[int] = Field(None, ge=0, le=100_000)
+    stock_tracked: Optional[bool] = None   # false = stop tracking stock for this item
+    stock_add: Optional[int] = Field(None, ge=-100_000, le=100_000)  # +/- adjustment, applied atomically
 
     _img = field_validator("image")(_check_image)
 
@@ -62,10 +76,13 @@ class OrderIn(BaseModel):
     payment_method: str
     items: list[Line] = Field(min_length=1)
 
+    _phone = field_validator("phone")(lambda v: norm_phone(v))
+
 class OrderItem(BaseModel):
     name: str
     qty: int
     price: int
+    product_id: str = ""
 
 class Order(BaseModel):
     id: str
@@ -85,6 +102,9 @@ class Order(BaseModel):
     has_proof: bool = False
     status: Status = "Pending"
     created_at: datetime
+    payment_id: str = ""            # gateway (Razorpay) payment id once paid online
+    needs_refund: bool = False      # paid online but the order is cancelled
+    notified: dict[str, str] = Field(default_factory=dict)  # WhatsApp event -> sent / failed / skipped
 
     @model_validator(mode="before")
     @classmethod
@@ -98,9 +118,23 @@ class OrderPatch(BaseModel):
     status: Optional[Status] = None
     paid: Optional[bool] = None
     payment_status: Optional[PayStatus] = None
+    needs_refund: Optional[bool] = None   # admin ticks this off once an online refund has been made
+
+class PayStart(BaseModel):
+    phone: str = Field(min_length=10)
+    _phone = field_validator("phone")(lambda v: norm_phone(v))
+
+class PayVerify(PayStart):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+class NotifyIn(BaseModel):
+    event: str
 
 class ProofIn(BaseModel):
     phone: str = Field(min_length=10)
+    _phone = field_validator("phone")(lambda v: norm_phone(v))
     utr: str = Field(default="", max_length=40)
     image: str = Field(default="", max_length=400_000)
 

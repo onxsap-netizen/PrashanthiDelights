@@ -5,10 +5,10 @@ import { toast } from "sonner";
 import { SITE } from "@/config/site";
 import { apiGet } from "@/lib/api";
 import { usePageTitle } from "@/lib/hooks";
-import { rupees } from "@/lib/shop";
+import { payLabel, rupees } from "@/lib/shop";
 import type { Order } from "@/lib/shop";
 import { CopyIcon, PhoneIcon } from "@/components/store/Icons";
-import { PayPanel, payState } from "@/components/store/PayPanel";
+import { OnlinePay, PayPanel, payState } from "@/components/store/PayPanel";
 import { Timeline } from "@/components/store/Timeline";
 
 function initial(code: string, state: unknown): Order | undefined {
@@ -39,6 +39,8 @@ export default function OrderPage() {
   );
   const fresh = (loc.state as { fresh?: boolean } | null)?.fresh;
   const st = payState(order);
+  const online = order.payment_method === "Online";
+  const awaitingOnline = online && st !== "Paid" && order.status !== "Cancelled";
 
   return (
     <div className="mx-auto max-w-xl px-4 pt-4">
@@ -47,12 +49,22 @@ export default function OrderPage() {
         <div className="relative">
           <span className="anim-pop mx-auto grid size-16 place-items-center rounded-full bg-gold text-maroon-950"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path className="draw-check" d="m5 12.500 4.500 4.500L19 7.500" /></svg></span>
           <h2 className="mt-4 font-display text-[32px] font-semibold leading-tight">{fresh ? `Thank you, ${order.name.split(" ")[0]}!` : "Here’s your order"}</h2>
-          <p className="mt-1 text-gold-100/90">{fresh ? "Your order is placed. We’ve started preparing it." : `Placed for ${order.name}`}</p>
+          <p className="mt-1 text-gold-100/90">{awaitingOnline ? "Almost done! Complete your payment to confirm your order." : fresh ? "Your order is placed. We’ve started preparing it." : `Placed for ${order.name}`}</p>
           <button onClick={() => navigator.clipboard?.writeText(order.code).then(() => toast.success("Order ID copied"), () => {})} className="mx-auto mt-4 inline-flex min-h-12 items-center gap-2 rounded-full bg-black/25 px-5 text-lg font-extrabold tracking-wide" aria-label={`Order ID ${order.code}. Tap to copy`}>{order.code}<CopyIcon width={18} height={18} className="text-gold-300" /></button>
           <p className="mt-2 text-sm text-gold-100/80">Save this ID to track your order.</p>
         </div>
       </section>
 
+      {awaitingOnline && (
+        <section className="mt-4 rounded-3xl bg-white p-5 shadow-card" aria-label="Payment">
+          <h2 className="mb-3 font-display text-xl text-maroon-800">Complete your payment</h2>
+          <OnlinePay order={order} auto={!!fresh} onPaid={setLocal} />
+          <p className="mt-3 text-xs text-ink-soft">Not paid within 30 minutes? The order is released automatically.</p>
+        </section>
+      )}
+      {online && st === "Paid" && (
+        <p className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-white p-4 font-semibold text-leaf shadow-card">Payment received. Your order is confirmed. We’ve sent the details on WhatsApp.</p>
+      )}
       {order.payment_method === "UPI" && st !== "Paid" && (
         <section className="mt-4 rounded-3xl bg-white p-5 shadow-card" aria-label="Payment">
           <h2 className="mb-3 font-display text-xl text-maroon-800">{st === "Proof submitted" ? "Payment" : "Complete your payment"}</h2>
@@ -71,12 +83,12 @@ export default function OrderPage() {
         <dl className="mt-3 space-y-1.5 border-t border-dashed border-beige-200 pt-3 text-[15px]">
           <div className="flex justify-between"><dt className="text-ink-soft">{order.mode === "Delivery" ? "Delivery" : "Pickup"}</dt><dd className="font-semibold">{order.fee ? rupees(order.fee) : "Free"}</dd></div>
           <div className="flex justify-between text-lg"><dt className="font-bold">Total</dt><dd className="font-extrabold tabular-nums text-maroon-800">{rupees(order.total)}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-soft">Payment</dt><dd className="font-semibold">{order.payment_method} · {st === "Paid" ? "Paid" : st === "Proof submitted" ? "Confirming" : "Pending"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-soft">Payment</dt><dd className="font-semibold text-right">{payLabel(order.payment_method)} · {st === "Paid" ? "Paid" : st === "Proof submitted" ? "Confirming" : "Pending"}</dd></div>
         </dl>
         <div className="mt-4 rounded-2xl bg-cream p-3.5 text-[15px]">
           {order.mode === "Pickup" ? <><b>Pickup:</b> {order.slot}<br /><span className="text-ink-soft">{SITE.addressLines.join(", ")}</span></> : <><b>Delivering to:</b><br /><span className="text-ink-soft">{order.address}</span></>}
         </div>
-        {order.payment_method !== "UPI" && st !== "Paid" && <div className="mt-3"><PayPanel order={order} /></div>}
+        {order.payment_method !== "UPI" && !online && st !== "Paid" && <div className="mt-3"><PayPanel order={order} /></div>}
       </section>
 
       <div className="mt-5 grid gap-3">

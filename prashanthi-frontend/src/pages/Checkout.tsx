@@ -28,6 +28,8 @@ export default function Checkout() {
   const { valid, missing, subtotal, fee, total, mode, ready, isError, isLoading } = useCartLines();
   const cfg = useShopConfig();
   const upiOn = !!cfg.data?.upi_id;
+  const onlineOn = !!cfg.data?.online_pay;
+  const waOn = !!cfg.data?.whatsapp;
   const days = useMemo(() => pickupSlots(), []);
 
   const [name, setName] = useState(prefs.name);
@@ -40,8 +42,8 @@ export default function Checkout() {
   const placed = useRef(false);
 
   const offline = mode === "Pickup" ? "Pay at store" : "Cash on delivery";
-  // The customer's own choice wins; otherwise default to UPI once we know the shop accepts it, else pay on receipt.
-  const pay = chosenPay === "UPI" && upiOn ? "UPI" : chosenPay === offline ? offline : upiOn ? "UPI" : offline;
+  // The customer's own choice wins; otherwise default to online payment (if the shop has it), then UPI, else pay on receipt.
+  const pay = chosenPay === "Online" && onlineOn ? "Online" : chosenPay === "UPI" && upiOn ? "UPI" : chosenPay === offline ? offline : onlineOn ? "Online" : upiOn ? "UPI" : offline;
   useEffect(() => { setTime(days[day]?.times[0] ?? ""); }, [day, days]);
 
   const place = useMutation({
@@ -55,6 +57,7 @@ export default function Checkout() {
       rememberOrder(o);
       setPrefs({ name: name.trim(), phone: cleanPhone(phone), address: address.trim() });
       try { sessionStorage.setItem("prs-last-order", JSON.stringify(o)); } catch { /* ignore */ }
+      // online orders go straight to the secure payment window on the order page
       nav(`/order/${o.code}`, { replace: true, state: { order: o, fresh: true } });
       clear();
     },
@@ -80,7 +83,8 @@ export default function Checkout() {
 
   const blocked = place.isPending || !ready || valid.length === 0 || missing.length > 0;
   const payOpts: { v: string; title: string; sub: string }[] = [
-    ...(upiOn ? [{ v: "UPI", title: "UPI", sub: "Pay with GPay, PhonePe, Paytm or any UPI app after placing your order" }] : []),
+    ...(onlineOn ? [{ v: "Online", title: "Pay online", sub: "UPI, debit / credit card or net banking. Instant confirmation" }] : []),
+    ...(upiOn ? [{ v: "UPI", title: onlineOn ? "Direct UPI transfer" : "UPI", sub: onlineOn ? "Pay to our UPI ID yourself; we confirm it manually" : "Pay with GPay, PhonePe, Paytm or any UPI app after placing your order" }] : []),
     { v: offline, title: offline, sub: mode === "Pickup" ? "Pay when you collect your order" : "Pay when your order arrives" },
   ];
 
@@ -127,7 +131,8 @@ export default function Checkout() {
                 </label>
               ))}
             </div>
-            <p className="flex items-center gap-2 text-sm text-ink-soft"><ShieldIcon width={18} height={18} className="shrink-0 text-leaf" />We never ask for card or bank details.</p>
+            <p className="flex items-center gap-2 text-sm text-ink-soft"><ShieldIcon width={18} height={18} className="shrink-0 text-leaf" />{pay === "Online" ? "Card and UPI details are entered on Razorpay’s secure window. We never see them." : "We never ask for card or bank details."}</p>
+            {waOn && <p className="text-sm text-ink-soft">We’ll send your order confirmation and updates on WhatsApp to the mobile number above.</p>}
           </Section>
         </form>
 

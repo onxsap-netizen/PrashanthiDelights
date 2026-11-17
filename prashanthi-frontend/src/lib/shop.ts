@@ -9,15 +9,25 @@ export interface Product {
   id: string; name: string; category: string; price: number; available: boolean; image?: string;
   // optional fields (filled by the owner in Admin; the storefront hides whatever is empty)
   description?: string; ingredients?: string; original_price?: number | null; tags?: Tag[];
+  /** Units left. Customers only receive it when running low; null/undefined = not tracked. */
+  stock?: number | null;
 }
 export interface OrderItem { name: string; qty: number; price: number }
 export interface Order {
   id: string; code: string; name: string; phone: string; mode: Mode; slot: string; address: string;
   payment_method: string; items: OrderItem[]; fee: number; total: number; paid: boolean;
   payment_status?: PayStatus; payment_ref?: string; has_proof?: boolean;
+  payment_id?: string; needs_refund?: boolean; notified?: Record<string, string>;
   status: Status; created_at: string;
 }
-export interface ShopConfig { upi_id: string; upi_name: string }
+export interface ShopConfig {
+  upi_id: string; upi_name: string;
+  /** Razorpay is set up on the server (pay by UPI / card / net banking). */
+  online_pay?: boolean; razorpay_key?: string;
+  /** WhatsApp updates are switched on. */
+  whatsapp?: boolean; low_stock_at?: number;
+}
+export const payLabel = (m: string) => (m === "Online" ? "Online (UPI / Card / Net banking)" : m);
 
 export const STATUSES: Status[] = ["Pending", "Fulfilled", "Out for delivery", "Delivered", "Cancelled"];
 export const rupees = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");

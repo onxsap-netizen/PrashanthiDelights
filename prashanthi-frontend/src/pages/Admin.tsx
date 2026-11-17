@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { brand, serif } from "@/lib/brand";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
-import { rupees, STATUSES } from "@/lib/shop";
+import { payLabel, rupees, STATUSES } from "@/lib/shop";
+import { WaCell } from "@/pages/AdminWhatsApp";
+import { SummaryTab } from "@/pages/AdminSummary";
 import { downloadCsv } from "@/lib/csv";
 import { shrinkPhoto } from "@/lib/image";
 import type { Order, Product } from "@/lib/shop";
@@ -71,13 +73,13 @@ function ProductDetails({ p, onSave }: { p: Product; onSave: (body: object) => v
 
 function Dashboard() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"orders" | "menu">("orders");
+  const [tab, setTab] = useState<"orders" | "summary" | "menu">("orders");
   const [range, setRange] = useState("Last 7 days");
   const [st, setSt] = useState("All statuses");
   const [ful, setFul] = useState("All types");
   const [pay, setPay] = useState("All methods");
   const [term, setTerm] = useState("");
-  const [nw, setNw] = useState({ name: "", category: "Sweets", price: "", image: "" });
+  const [nw, setNw] = useState({ name: "", category: "Sweets", price: "", image: "", stock: "" });
   const newPhoto = useRef<HTMLInputElement>(null);
   const orders = useQuery({ queryKey: ["admin", "orders"], queryFn: () => apiGet<Order[]>("/admin/orders"), refetchInterval: 15000 });
   const menu = useQuery({ queryKey: ["admin", "products"], queryFn: () => apiGet<Product[]>("/admin/products") });
@@ -85,8 +87,8 @@ function Dashboard() {
   const patchOrder = useMutation({ mutationFn: (v: { id: string; body: object }) => apiPatch(`/admin/orders/${v.id}`, v.body), onSuccess: refresh });
   const patchProd = useMutation({ mutationFn: (v: { id: string; body: object }) => apiPatch(`/admin/products/${v.id}`, v.body), onSuccess: () => { refresh(); toast.success("Menu updated"); } });
   const delProd = useMutation({ mutationFn: (id: string) => apiDelete(`/admin/products/${id}`), onSuccess: refresh });
-  const addProd = useMutation({ mutationFn: () => apiPost("/admin/products", { name: nw.name, category: nw.category, price: Number(nw.price), available: true, image: nw.image }),
-    onSuccess: () => { setNw({ ...nw, name: "", price: "", image: "" }); refresh(); }, onError: () => toast.error("Enter a name and a price") });
+  const addProd = useMutation({ mutationFn: () => apiPost("/admin/products", { name: nw.name, category: nw.category, price: Number(nw.price), available: true, image: nw.image, ...(nw.stock.trim() !== "" ? { stock: Math.max(0, Math.floor(Number(nw.stock))) } : {}) }),
+    onSuccess: () => { setNw({ ...nw, name: "", price: "", image: "", stock: "" }); refresh(); }, onError: () => toast.error("Enter a name and a price") });
 
   const all = orders.isError ? [] : (orders.data ?? []);
   const days = RANGES[range];
@@ -133,6 +135,7 @@ function Dashboard() {
       </div>
       <div className="mx-auto mt-4 flex max-w-6xl gap-2 px-5">
         <Button variant={tab === "orders" ? "default" : "outline"} onClick={() => setTab("orders")}>Orders</Button>
+        <Button variant={tab === "summary" ? "default" : "outline"} onClick={() => setTab("summary")}>Summary & stock</Button>
         <Button variant={tab === "menu" ? "default" : "outline"} onClick={() => setTab("menu")}>Menu and prices</Button>
       </div>
       {tab === "orders" ? (
@@ -154,27 +157,29 @@ function Dashboard() {
           </div>
           <div className="overflow-x-auto rounded-2xl border border-[#eadfce] bg-white">
             <table className="w-full text-left text-sm">
-              <thead><tr className="border-b border-[#eadfce]">{["Order", "Customer", "Items", "Type", "Payment", "Total", "Status"].map((h) => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
+              <thead><tr className="border-b border-[#eadfce]">{["Order", "Customer", "Items", "Type", "Payment", "Total", "Status", "WhatsApp"].map((h) => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
               <tbody>
-                {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center opacity-70">No orders match these filters. New orders appear within 15 seconds.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center opacity-70">No orders match these filters. New orders appear within 15 seconds.</td></tr>}
                 {rows.map((o) => (
                   <tr key={o.id} className="border-b border-[#f3e8d8] align-top">
                     <td className="px-4 py-3"><b>{o.code}</b><div className="text-xs opacity-60">{new Date(o.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</div></td>
                     <td className="px-4 py-3">{o.name}<div className="text-xs opacity-60">{o.phone}</div></td>
                     <td className="max-w-56 px-4 py-3 text-xs">{o.items.map((i) => `${i.name} × ${i.qty}`).join(", ")}</td>
                     <td className="px-4 py-3">{o.mode}<div className="text-xs opacity-60">{o.mode === "Pickup" ? o.slot : o.address}</div></td>
-                    <td className="px-4 py-3">{o.payment_method}
+                    <td className="px-4 py-3">{payLabel(o.payment_method).replace(" (UPI / Card / Net banking)", "")}{o.payment_method === "Online" && o.payment_id && <div className="text-xs opacity-60">{o.payment_id}</div>}
+                      {o.needs_refund && <div className="mt-1 rounded-lg bg-red-50 px-2 py-1 text-xs text-red-800"><b>Refund due</b> (paid online, order cancelled)<button className="mt-1 block font-semibold underline" onClick={() => patchOrder.mutate({ id: o.id, body: { needs_refund: false } })}>Mark refunded</button></div>}
                       {o.payment_status === "Proof submitted" && <div className="mt-1 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-900"><b>Customer says paid</b>{o.payment_ref && <div>UTR: {o.payment_ref}</div>}{o.has_proof && <a className="font-semibold underline" href={`/api/admin/orders/${o.id}/proof`} target="_blank" rel="noopener noreferrer">View screenshot</a>}</div>}
                       <div><button className={`mt-1 rounded-full px-2 py-0.5 text-xs font-semibold ${o.paid ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-900"}`} onClick={() => patchOrder.mutate({ id: o.id, body: { paid: !o.paid } })}>{o.paid ? "Paid" : "Mark paid"}</button></div></td>
                     <td className="px-4 py-3 font-bold">{rupees(o.total)}</td>
                     <td className="px-4 py-3"><select aria-label="Order status" className={`h-8 rounded-full border-0 px-2 text-xs font-semibold ${TONE[o.status]}`} value={o.status} onChange={(e) => patchOrder.mutate({ id: o.id, body: { status: e.target.value } })}>{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
+                    <td className="px-4 py-3"><WaCell order={o} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
-      ) : (
+      ) : tab === "summary" ? <SummaryTab /> : (
         <div className="mx-auto max-w-4xl px-5 pb-12 pt-4">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm opacity-70">Tap a photo box to add or change a photo. Photos are shrunk automatically.</p>
@@ -193,10 +198,11 @@ function Dashboard() {
             </div>
           ))}
           <h2 className="mb-2 mt-6 text-xl font-bold" style={serif}>Add an item</h2>
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-5">
             <Input placeholder="Item name" value={nw.name} onChange={(e) => setNw({ ...nw, name: e.target.value })} />
             <Input placeholder="Category" value={nw.category} onChange={(e) => setNw({ ...nw, category: e.target.value })} />
             <Input placeholder="Price in ₹" type="number" value={nw.price} onChange={(e) => setNw({ ...nw, price: e.target.value })} />
+            <Input placeholder="Stock (optional)" type="number" min={0} value={nw.stock} onChange={(e) => setNw({ ...nw, stock: e.target.value })} />
             <Button onClick={() => addProd.mutate()}>Add to menu</Button>
           </div>
           <div className="mt-2 flex items-center gap-3 text-sm">

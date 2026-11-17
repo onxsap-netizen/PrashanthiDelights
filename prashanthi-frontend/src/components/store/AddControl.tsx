@@ -19,6 +19,7 @@ export function AddControl({ product, label, className = "" }: { product: Produc
   const { qty, add, setQty } = useStore();
   const n = qty[product.id] ?? 0;
   const name = label ?? product.name;
+  const cap = typeof product.stock === "number" ? Math.min(MAX_QTY, product.stock) : MAX_QTY;   // stock is only sent when running low
   if (!product.available) return <button disabled className={`h-11 w-full rounded-full bg-beige text-sm font-semibold text-ink-soft ${className}`}>Unavailable</button>;
   if (!n) {
     return (
@@ -32,7 +33,7 @@ export function AddControl({ product, label, className = "" }: { product: Produc
     <div className={`flex h-11 w-full items-center justify-between rounded-full bg-maroon-700 px-1 text-white ${className}`} role="group" aria-label={`Quantity of ${name}`}>
       <button type="button" aria-label={`Remove one ${name}`} onClick={() => setQty(product.id, n - 1)} className="grid size-11 place-items-center rounded-full active:bg-maroon-800"><MinusIcon width={18} height={18} /></button>
       <output aria-live="polite" className="font-bold tabular-nums">{n}</output>
-      <button type="button" aria-label={`Add one more ${name}`} disabled={n >= MAX_QTY} onClick={() => { if (n >= MAX_QTY) toast.info("That’s the most we can take for one item online."); else setQty(product.id, n + 1); }} className="grid size-11 place-items-center rounded-full active:bg-maroon-800"><PlusIcon width={18} height={18} /></button>
+      <button type="button" aria-label={`Add one more ${name}`} disabled={n >= cap} onClick={() => { if (n >= cap) toast.info(cap < MAX_QTY ? `Only ${cap} left in stock.` : "That’s the most we can take for one item online."); else setQty(product.id, n + 1); }} className="grid size-11 place-items-center rounded-full active:bg-maroon-800"><PlusIcon width={18} height={18} /></button>
     </div>
   );
 }

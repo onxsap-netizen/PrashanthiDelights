@@ -5,6 +5,7 @@ import { SITE } from "@/config/site";
 import { apiPost, explain } from "@/lib/api";
 import { useShopConfig } from "@/lib/hooks";
 import { shrinkPhoto } from "@/lib/image";
+import { payOnline } from "@/lib/razorpay";
 import { rupees } from "@/lib/shop";
 import type { Order } from "@/lib/shop";
 import { CameraIcon, CheckIcon, CopyIcon } from "./Icons";
@@ -38,6 +39,10 @@ export function PayPanel({ order, onUpdated }: { order: Order; onUpdated?: (o: O
     onError: (e) => setErr(explain(e, "We couldn’t save that. Please try again.")),
   });
 
+  if (order.payment_method === "Online") {
+    return state === "Paid" ? <p className="flex items-center gap-2 font-semibold text-leaf"><CheckIcon width={20} height={20} />Payment received. Thank you!</p>
+      : <OnlinePay order={order} onPaid={(o) => onUpdated?.(o)} />;
+  }
   if (order.payment_method !== "UPI") {
     return state === "Paid"
       ? <p className="flex items-center gap-2 font-semibold text-leaf"><CheckIcon width={20} height={20} />Payment received</p>
@@ -90,6 +95,34 @@ export function PayPanel({ order, onUpdated }: { order: Order; onUpdated?: (o: O
         {err && <p role="alert" className="text-sm font-medium text-red-700">{err}</p>}
         <button type="button" onClick={send} disabled={proof.isPending} className="h-12 rounded-full bg-maroon-800 px-6 font-bold text-white disabled:opacity-60">{proof.isPending ? "Sending…" : "Send payment details"}</button>
       </div>
+    </div>
+  );
+}
+
+/** "Pay online" (Razorpay: UPI, cards, net banking). Opens automatically right after the order is placed. */
+export function OnlinePay({ order, auto = false, onPaid }: { order: Order; auto?: boolean; onPaid: (o: Order) => void }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const started = useRef(false);
+
+  const pay = async () => {
+    if (busy) return;
+    setBusy(true); setMsg("");
+    const r = await payOnline(order);
+    setBusy(false);
+    if (r.kind === "paid") { toast.success("Payment received. Thank you!"); onPaid(r.order); qc.invalidateQueries({ queryKey: ["track"] }); }
+    else if (r.kind === "failed") setMsg(r.message);
+    else setMsg("Payment not completed yet. Your order is saved. Pay now to confirm it.");
+  };
+  useEffect(() => { if (auto && !started.current) { started.current = true; void pay(); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  return (
+    <div className="grid gap-3">
+      <p className="text-[15px]">Pay <b className="text-lg text-maroon-800">{rupees(order.total)}</b> securely with UPI, card or net banking.</p>
+      <button type="button" onClick={pay} disabled={busy} className="h-14 rounded-full bg-maroon-700 px-6 text-[17px] font-extrabold text-white shadow-lift active:scale-[.98] disabled:opacity-60">{busy ? "Opening payment…" : `Pay ${rupees(order.total)} now`}</button>
+      {msg && <p role="alert" className="rounded-xl bg-gold-100 p-3 text-sm font-medium text-maroon-900">{msg}</p>}
+      <p className="text-xs text-ink-soft">Payments are handled by Razorpay. We never see your card or bank details. Your order is confirmed on WhatsApp once payment succeeds.</p>
     </div>
   );
 }

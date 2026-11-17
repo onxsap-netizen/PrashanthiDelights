@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SITE } from "@/config/site";
 import { apiGet, explain } from "@/lib/api";
 import { usePageTitle } from "@/lib/hooks";
-import { cleanPhone, rupees } from "@/lib/shop";
+import { cleanPhone, payLabel, rupees } from "@/lib/shop";
 import type { Order } from "@/lib/shop";
 import { useStore } from "@/lib/store";
 import { SearchIcon } from "@/components/store/Icons";
@@ -51,8 +51,8 @@ export default function Track() {
               <p className="mt-5 text-[15px] text-ink-soft">{o.items.map((i) => `${i.name} × ${i.qty}`).join(", ")}</p>
               <p className="mt-2 text-sm">{o.mode === "Pickup" ? <>Pickup: <b>{o.slot}</b></> : <>Delivering to: <b>{o.address}</b></>}</p>
               <div className="mt-4 border-t border-dashed border-beige-200 pt-4">
-                <p className="mb-2 text-sm font-semibold">Payment: {o.payment_method} · <span className={st === "Paid" ? "text-leaf" : ""}>{st === "Proof submitted" ? "Confirming" : st}</span></p>
-                {o.status !== "Cancelled" && o.payment_method === "UPI" && st !== "Paid" && <PayPanel order={o} />}
+                <p className="mb-2 text-sm font-semibold">Payment: {payLabel(o.payment_method)} · <span className={st === "Paid" ? "text-leaf" : ""}>{st === "Proof submitted" ? "Confirming" : st}</span></p>
+                {o.status !== "Cancelled" && (o.payment_method === "UPI" || o.payment_method === "Online") && st !== "Paid" && <PayPanel order={o} />}
               </div>
             </article>
           );
