@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+motor
+pymongo
+pydantic>=2
+python-dotenv
+httpx
+tzdata
