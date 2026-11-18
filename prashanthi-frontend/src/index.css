@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces Variable", Georgia, serif;
+  --font-sans: "Figtree Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Maroon: sampled from the Prashanthi logo (#7a231c) */
+  --color-maroon-950: #2e0a08;
+  --color-maroon-900: #430f0c;
+  --color-maroon-800: #5c1812;
+  --color-maroon-700: #7a231c;
+  --color-maroon-600: #953027;
+  --color-maroon-100: #f5e3df;
+  --color-maroon-50: #fbf1ef;
+
+  /* Cream & beige: the page itself */
+  --color-cream: #fbf5e6;
+  --color-cream-50: #fffdf7;
+  --color-beige: #f1e5cb;
+  --color-beige-200: #e4d2aa;
+
+  /* Brass gold */
+  --color-gold: #c8962c;
+  --color-gold-300: #e5c264;
+  --color-gold-100: #f6e8b8;
+  --color-gold-700: #8a6213;
+
+  --color-ink: #2b1612;
+  --color-ink-soft: #6a564c;
+  --color-leaf: #2f6b3a;
+
+  --shadow-card: 0 1px 2px rgb(67 15 12 / 0.06), 0 6px 18px -6px rgb(67 15 12 / 0.12);
+  --shadow-lift: 0 10px 30px -8px rgb(67 15 12 / 0.28);
+}
+
+@layer base {
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+  img { max-width: 100%; }
+  input, select, textarea, button { font: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; border-radius: 6px; }
+  ::selection { background: var(--color-gold-100); }
+}
+
+/* ---------- brand ornaments ---------- */
+.font-display { font-family: var(--font-display); font-optical-sizing: auto; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* kolam-style dot lattice */
+.kolam {
+  background-image: radial-gradient(circle, rgb(200 150 44 / 0.4) 1.3px, transparent 1.6px);
+  background-size: 16px 16px;
+}
+.kolam-light {
+  background-image: radial-gradient(circle, rgb(122 35 28 / 0.12) 1.3px, transparent 1.6px);
+  background-size: 14px 14px;
+}
+
+/* temple-niche arch */
+.arch { border-radius: 999px 999px 18px 18px; }
+
+/* scalloped edge, like festival bunting, hangs below the hero */
+.scallop-b {
+  height: 14px;
+  background:
+    radial-gradient(circle at 14px 0, var(--scallop, #5c1812) 13px, transparent 13.5px) 0 0 / 28px 14px repeat-x;
+}
+
+/* ---------- motion (only where it answers an action, plus one hero entrance) ---------- */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes spin-in { from { opacity: 0; transform: rotate(-14deg) scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes bar-up { from { transform: translateY(120%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+.anim-rise { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; }
+.anim-spin-in { animation: spin-in 1.1s cubic-bezier(.2,.7,.2,1) .15s both; }
+.anim-sheet { animation: sheet-up .28s cubic-bezier(.2,.8,.2,1) both; }
+.anim-fade { animation: fade .2s ease both; }
+.anim-pop { animation: pop .4s cubic-bezier(.2,.8,.3,1.2) both; }
+.anim-bar { animation: bar-up .3s cubic-bezier(.2,.8,.2,1) both; }
+.draw-check { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw .5s .35s ease forwards; }
+
+.skeleton { position: relative; overflow: hidden; background: var(--color-beige); }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
+  animation: shimmer 1.3s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .draw-check { stroke-dashoffset: 0; }
+}
+
+/* leave room for the iPhone home indicator */
+.safe-b { padding-bottom: env(safe-area-inset-bottom, 0px); }
