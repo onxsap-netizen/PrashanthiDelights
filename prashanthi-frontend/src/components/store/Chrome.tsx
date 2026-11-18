@@ -67,16 +67,6 @@ function MiniCart({ navVisible }: { navVisible: boolean }) {
   );
 }
 
-/** Always-there WhatsApp chat button (bottom-left, so it never covers the basket bar on the right). */
-function WhatsAppFab({ navVisible }: { navVisible: boolean }) {
-  return (
-    <a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" aria-label="Chat with us on WhatsApp"
-      className={`fixed left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full bg-[#1fa855] px-4 font-bold text-white shadow-lift transition active:scale-95 md:left-6 md:px-5 ${navVisible ? "bottom-20" : "bottom-5"} md:bottom-6`}>
-      <WhatsAppIcon width={26} height={26} /><span className="hidden md:inline">Chat on WhatsApp</span>
-    </a>
-  );
-}
-
 function Footer() {
   return (
     <footer className="mt-12 bg-maroon-900 text-gold-100/90">
@@ -138,7 +128,6 @@ export default function Layout() {
       <main id="main" className={focus ? "pb-28 md:pb-10" : ""}><Outlet /></main>
       {(!focus || desktop) && <Footer />}
       {!focus && <BottomNav />}
-      {!focus && <WhatsAppFab navVisible />}
       <MiniCart navVisible={!focus} />
       <QuickView />
     </div>
