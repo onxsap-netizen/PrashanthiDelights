@@ -24,6 +24,9 @@ export const SITE = {
   /** https://wa.me link. Pass a message to pre-fill the chat (e.g. an order code). */
   whatsappHref: (msg = "Hi Prashanthi Delights, I have a question.") => `https://wa.me/919845828903?text=${encodeURIComponent(msg)}`,
 
+  /** Photo for the "Visit our store" card. Put the file in the /public folder (e.g. public/store.jpg) and set "/store.jpg". Empty = the plate illustration. */
+  storeImage: "",
+
   /** Optional. Leave empty and the matching homepage section stays hidden. */
   instagramUrl: "",
   instagramHandle: "",

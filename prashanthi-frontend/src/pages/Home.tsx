@@ -133,7 +133,9 @@ function Visit() {
             <a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center gap-2 rounded-full bg-[#1fa855] px-6 font-bold text-white"><WhatsAppIcon width={20} height={20} />WhatsApp us</a>
           </div>
         </div>
-        <div className="kolam relative hidden min-h-56 place-items-center bg-gold-100 md:grid"><Thali className="w-64" /></div>
+        {SITE.storeImage
+          ? <img src={SITE.storeImage} alt={`${SITE.name} store, ${SITE.area}`} width={800} height={600} loading="lazy" decoding="async" className="h-56 w-full object-cover md:h-full md:min-h-72" />
+          : <div className="kolam relative hidden min-h-56 place-items-center bg-gold-100 md:grid"><Thali className="w-64" /></div>}
       </div>
     </section>
   );
