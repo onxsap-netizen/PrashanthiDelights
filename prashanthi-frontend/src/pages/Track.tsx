@@ -58,7 +58,7 @@ export default function Track() {
           );
         })}
       </div>
-      <p className="mt-8 text-center text-sm text-ink-soft">Need help? <a href={SITE.phoneHref} className="font-bold text-maroon-700">Call {SITE.phoneDisplay}</a> · <Link to="/menu" className="font-bold text-maroon-700">Keep shopping</Link></p>
+      <p className="mt-8 text-center text-sm text-ink-soft">Need help? <a href={SITE.phoneHref} className="font-bold text-maroon-700">Call {SITE.phoneDisplay}</a> or <a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" className="font-bold text-[#188a45]">WhatsApp us</a> · <Link to="/menu" className="font-bold text-maroon-700">Keep shopping</Link></p>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { usePageTitle } from "@/lib/hooks";
 import { cleanPhone, rupees } from "@/lib/shop";
 import { useStore } from "@/lib/store";
 import { Field } from "@/components/store/Field";
-import { ChevronRight, PhoneIcon, PinIcon } from "@/components/store/Icons";
+import { ChevronRight, PhoneIcon, PinIcon, WhatsAppIcon } from "@/components/store/Icons";
 
 export default function Account() {
   usePageTitle(`My account · ${SITE.name}`);
@@ -47,6 +47,7 @@ export default function Account() {
         <h2 className="mb-3 font-display text-xl text-maroon-800">Help &amp; store</h2>
         <ul className="space-y-1 text-[15px]">
           <li><a href={SITE.phoneHref} className="flex min-h-12 items-center gap-3 font-semibold"><PhoneIcon className="text-maroon-700" />Call {SITE.phoneDisplay}</a></li>
+          <li><a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" className="flex min-h-12 items-center gap-3 font-semibold"><WhatsAppIcon className="text-[#1fa855]" />Chat on WhatsApp</a></li>
           <li><a href={SITE.mapsHref} target="_blank" rel="noopener noreferrer" className="flex min-h-12 items-center gap-3 font-semibold"><PinIcon className="text-maroon-700" />{SITE.addressLines.join(", ")}</a></li>
           <li><Link to="/policies" className="flex min-h-12 items-center gap-3 font-semibold text-ink-soft">Delivery, payments &amp; privacy</Link></li>
         </ul>

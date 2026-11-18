@@ -5,7 +5,7 @@ import { useProducts } from "@/lib/hooks";
 import { deliveryFee, rupees } from "@/lib/shop";
 import { useStore } from "@/lib/store";
 import { Header, ModeSwitch } from "./Header";
-import { BagIcon, ChevronRight, ClockIcon, GridIcon, HomeIcon, PhoneIcon, PinIcon, UserIcon } from "./Icons";
+import { BagIcon, ChevronRight, ClockIcon, GridIcon, HomeIcon, PhoneIcon, PinIcon, UserIcon, WhatsAppIcon } from "./Icons";
 import { Mandala } from "./Art";
 import { QuickView } from "./QuickView";
 
@@ -67,6 +67,16 @@ function MiniCart({ navVisible }: { navVisible: boolean }) {
   );
 }
 
+/** Always-there WhatsApp chat button (bottom-left, so it never covers the basket bar on the right). */
+function WhatsAppFab({ navVisible }: { navVisible: boolean }) {
+  return (
+    <a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" aria-label="Chat with us on WhatsApp"
+      className={`fixed left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full bg-[#1fa855] px-4 font-bold text-white shadow-lift transition active:scale-95 md:left-6 md:px-5 ${navVisible ? "bottom-20" : "bottom-5"} md:bottom-6`}>
+      <WhatsAppIcon width={26} height={26} /><span className="hidden md:inline">Chat on WhatsApp</span>
+    </a>
+  );
+}
+
 function Footer() {
   return (
     <footer className="mt-12 bg-maroon-900 text-gold-100/90">
@@ -84,6 +94,7 @@ function Footer() {
             <li className="flex gap-2.5"><PinIcon width={18} height={18} className="mt-0.5 shrink-0 text-gold" /><a href={SITE.mapsHref} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">{SITE.addressLines.join(", ")}</a></li>
             <li className="flex gap-2.5"><ClockIcon width={18} height={18} className="mt-0.5 shrink-0 text-gold" />{SITE.hours}</li>
             <li className="flex gap-2.5"><PhoneIcon width={18} height={18} className="mt-0.5 shrink-0 text-gold" /><a href={SITE.phoneHref} className="font-semibold text-white">{SITE.phoneDisplay}</a></li>
+            <li className="flex gap-2.5"><WhatsAppIcon width={18} height={18} className="mt-0.5 shrink-0 text-gold" /><a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" className="font-semibold text-white underline-offset-4 hover:underline">Chat on WhatsApp</a></li>
           </ul>
         </div>
         <div>
@@ -127,6 +138,7 @@ export default function Layout() {
       <main id="main" className={focus ? "pb-28 md:pb-10" : ""}><Outlet /></main>
       {(!focus || desktop) && <Footer />}
       {!focus && <BottomNav />}
+      {!focus && <WhatsAppFab navVisible />}
       <MiniCart navVisible={!focus} />
       <QuickView />
     </div>

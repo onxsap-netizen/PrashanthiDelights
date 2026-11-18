@@ -20,6 +20,7 @@ export const TruckIcon = I(["M3 6h11v10H3z", "M14 10h4l3 3v3h-7", "M7 19a1.7 1.7
 export const StoreIcon = I(["M4 9l1.5-5h13L20 9", "M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9", "M5 12v8h14v-8", "M10 20v-4h4v4"]);
 export const PhoneIcon = I("M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z");
 export const PinIcon = I(["M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.800 12 21 12 21Z", "M12 12a2.500 2.500 0 1 0 0-5 2.500 2.500 0 0 0 0 5Z"]);
+export const WhatsAppIcon = I(["M3 21l1.600-4.600A8.500 8.500 0 1 1 8 19.600L3 21Z", "M9 8.500c0 3.500 3 6.500 6.500 6.500l1.200-1.400-2.300-1.100-.9.800a4.700 4.700 0 0 1-2.300-2.300l.8-.9-1.100-2.300L9 8.500Z"]);
 export const ClockIcon = I(["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", "M12 7v5l3 2"]);
 export const TrashIcon = I(["M4 7h16", "M9 7V4h6v3", "M6 7l1 13h10l1-13"]);
 export const EyeIcon = I(["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"]);

@@ -7,7 +7,7 @@ import { apiGet } from "@/lib/api";
 import { usePageTitle } from "@/lib/hooks";
 import { payLabel, rupees } from "@/lib/shop";
 import type { Order } from "@/lib/shop";
-import { CopyIcon, PhoneIcon } from "@/components/store/Icons";
+import { CopyIcon, PhoneIcon, WhatsAppIcon } from "@/components/store/Icons";
 import { OnlinePay, PayPanel, payState } from "@/components/store/PayPanel";
 import { Timeline } from "@/components/store/Timeline";
 
@@ -95,6 +95,7 @@ export default function OrderPage() {
         <Link to={`/track?q=${encodeURIComponent(order.code)}`} className="grid h-14 place-items-center rounded-full bg-maroon-700 text-lg font-extrabold text-white shadow-lift">Track this order</Link>
         <Link to="/menu" className="grid h-14 place-items-center rounded-full border-2 border-maroon-700 text-lg font-bold text-maroon-700">Continue shopping</Link>
         <a href={SITE.phoneHref} className="inline-flex min-h-12 items-center justify-center gap-2 text-[15px] font-bold text-maroon-700"><PhoneIcon width={18} height={18} />Questions? Call {SITE.phoneDisplay}</a>
+        <a href={SITE.whatsappHref(`Hi, I have a question about my order ${order.code}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 text-[15px] font-bold text-[#188a45]"><WhatsAppIcon width={18} height={18} />Or message us on WhatsApp</a>
       </div>
     </div>
   );

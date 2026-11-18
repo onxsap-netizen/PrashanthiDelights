@@ -6,7 +6,7 @@ import { useProducts, usePageTitle } from "@/lib/hooks";
 import { rupees } from "@/lib/shop";
 import { useStore } from "@/lib/store";
 import { Mandala, SweetArt, Thali } from "@/components/store/Art";
-import { ClockIcon, InstagramIcon, LeafIcon, PhoneIcon, PinIcon, ShieldIcon, StarIcon, TruckIcon, FlameIcon, StoreIcon } from "@/components/store/Icons";
+import { ClockIcon, InstagramIcon, LeafIcon, PhoneIcon, PinIcon, ShieldIcon, StarIcon, TruckIcon, FlameIcon, StoreIcon, WhatsAppIcon } from "@/components/store/Icons";
 import { Photo, ProductCard, ProductSkeletons } from "@/components/store/ProductCard";
 import { Rail, RailCell, SectionHead } from "@/components/store/Rail";
 
@@ -130,6 +130,7 @@ function Visit() {
           <div className="mt-6 flex flex-wrap gap-3">
             <a href={SITE.mapsHref} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center rounded-full bg-maroon-700 px-6 font-bold text-white">Get directions</a>
             <a href={SITE.phoneHref} className="inline-flex h-12 items-center rounded-full border-2 border-maroon-700 px-6 font-bold text-maroon-700">Call us</a>
+            <a href={SITE.whatsappHref()} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center gap-2 rounded-full bg-[#1fa855] px-6 font-bold text-white"><WhatsAppIcon width={20} height={20} />WhatsApp us</a>
           </div>
         </div>
         <div className="kolam relative hidden min-h-56 place-items-center bg-gold-100 md:grid"><Thali className="w-64" /></div>
